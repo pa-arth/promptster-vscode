@@ -1,0 +1,126 @@
+import * as vscode from 'vscode';
+import { BaseCollector } from './base';
+import { sanitizePath } from '../utils/pathSanitizer';
+import { debounce } from '../events/debounce';
+
+/**
+ * Tracks file opens/closes, dwell time per file, and scroll depth.
+ */
+export class FileReadingCollector extends BaseCollector {
+  /** Tracks when the current file was focused. */
+  private currentFile: string | null = null;
+  private currentFileOpenedAt: number = 0;
+  private openedFiles = new Set<string>();
+
+  activate(): void {
+    // File open — fires when a text editor becomes visible
+    this.disposables.push(
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
+        this.emitDwellAndSwitch(editor);
+      }),
+    );
+
+    // Tab close
+    this.disposables.push(
+      vscode.workspace.onDidCloseTextDocument((doc) => {
+        const filePath = sanitizePath(doc.uri.fsPath);
+        if (!filePath) return;
+
+        this.transport.enqueue(
+          this.factory.create('editor_focus', {
+            subKind: 'file_close',
+            filePath,
+          }),
+        );
+      }),
+    );
+
+    // Scroll depth — debounced
+    const emitScrollDepth = debounce((_editor: vscode.TextEditor, visibleRanges: readonly vscode.Range[]) => {
+      const filePath = sanitizePath(_editor.document.uri.fsPath);
+      if (!filePath || visibleRanges.length === 0) return;
+
+      const totalLines = _editor.document.lineCount;
+      const maxVisibleLine = Math.max(...visibleRanges.map((r) => r.end.line));
+      const scrollDepthPct = totalLines > 0 ? Math.round((maxVisibleLine / totalLines) * 100) : 0;
+
+      this.transport.enqueue(
+        this.factory.create('editor_focus', {
+          subKind: 'scroll_depth',
+          filePath,
+          maxVisibleLineReached: maxVisibleLine,
+          totalLines,
+          scrollDepthPct,
+        }),
+      );
+    }, 1000);
+
+    this.disposables.push(
+      vscode.window.onDidChangeTextEditorVisibleRanges((e) => {
+        emitScrollDepth(e.textEditor, e.visibleRanges);
+      }),
+    );
+    this.disposables.push({ dispose: () => emitScrollDepth.cancel() });
+  }
+
+  private emitDwellAndSwitch(editor: vscode.TextEditor | undefined): void {
+    const now = Date.now();
+
+    // Emit dwell for previous file
+    if (this.currentFile && this.currentFileOpenedAt) {
+      const dwellMs = now - this.currentFileOpenedAt;
+      // Only emit if they spent more than 500ms (skip accidental flickers)
+      if (dwellMs > 500) {
+        // Dwell is captured as part of file_close or tab_switch, not a separate event
+      }
+    }
+
+    if (!editor) {
+      this.currentFile = null;
+      this.currentFileOpenedAt = 0;
+      return;
+    }
+
+    const filePath = sanitizePath(editor.document.uri.fsPath);
+    if (!filePath) {
+      this.currentFile = null;
+      this.currentFileOpenedAt = 0;
+      return;
+    }
+
+    const fromFile = this.currentFile;
+    const fromDwellMs = this.currentFileOpenedAt ? now - this.currentFileOpenedAt : 0;
+
+    // If switching between files, emit tab_switch
+    if (fromFile && fromFile !== filePath) {
+      this.transport.enqueue(
+        this.factory.create('editor_focus', {
+          subKind: 'tab_switch',
+          fromFile,
+          toFile: filePath,
+          fromDwellMs,
+        }),
+      );
+    }
+
+    // Emit file_open if this file hasn't been opened before in this session
+    const isNew = !this.openedFiles.has(filePath);
+    if (isNew) {
+      this.openedFiles.add(filePath);
+    }
+
+    this.transport.enqueue(
+      this.factory.create('editor_focus', {
+        subKind: 'file_open',
+        filePath,
+        fileExtension: filePath.includes('.') ? '.' + filePath.split('.').pop() : '',
+        languageId: editor.document.languageId,
+        lineCount: editor.document.lineCount,
+        isNewFile: isNew,
+      }),
+    );
+
+    this.currentFile = filePath;
+    this.currentFileOpenedAt = now;
+  }
+}

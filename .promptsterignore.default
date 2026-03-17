@@ -1,0 +1,20 @@
+# Default patterns — files matching these are never reported to Promptster.
+# Copy this to .promptsterignore in your workspace root to customize.
+
+# Secrets and config
+.env*
+.promptster/
+credentials*
+**/secret*
+
+# Dependencies and build artifacts
+node_modules/
+.git/
+dist/
+build/
+out/
+*.vsix
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,74 @@
+{
+  "name": "promptster",
+  "displayName": "Promptster Assessment",
+  "description": "Editor telemetry for Promptster hiring assessments — captures development process signals for evaluation.",
+  "version": "0.1.0",
+  "publisher": "Promptster",
+  "icon": "assets/icon.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/promptster-dev/promptster-vscode"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Promptster",
+      "properties": {
+        "promptster.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable Promptster telemetry capture."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "promptster.configure",
+        "title": "Promptster: Configure"
+      },
+      {
+        "command": "promptster.pause",
+        "title": "Promptster: Pause Capture"
+      },
+      {
+        "command": "promptster.resume",
+        "title": "Promptster: Resume Capture"
+      },
+      {
+        "command": "promptster.viewDetails",
+        "title": "Promptster: View Captured Signals"
+      },
+      {
+        "command": "promptster.showStatus",
+        "title": "Promptster: Show Status"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "ovsx": "^0.10.9",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}
