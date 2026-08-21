@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 Editor attention capture — the extension is wired to the session, honours what it
 publishes, and no longer manufactures attention on reattach.
@@ -46,6 +46,16 @@ See `openspec/changes/editor-attention-capture`.
 - `test/integration/sessionLifecycle.test.ts`: session config, consent and
   reattach idempotence, driven through the real extension entry point.
 - 93 tests.
+
+### Release
+- `scripts/build-vsix.sh` builds the `.vsix` reproducibly (fixed zip entry order,
+  `SOURCE_DATE_EPOCH` from the commit date, fixed permissions) and writes a
+  `.sha256` beside it. Verified: two builds of one commit, with mtimes touched
+  in between, produce identical bytes. `--tag` creates the `vN.N.N` tag with the
+  checksum in the tag message.
+- The artifact was never committed — `*.vsix` is gitignored and
+  `promptster-0.1.0.vsix` existed untracked on one machine, a version behind its
+  source and unattributable to any commit.
 
 ## 0.2.0
 
