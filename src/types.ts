@@ -13,7 +13,12 @@ export interface EventSource {
   channel: SourceChannel;
   integration: Integration;
   emitter: 'promptster-vscode';
-  cwd?: string;
+  /**
+   * Workspace identity, if ever needed. NOT an absolute path — see
+   * events/factory.ts and openspec findings-1.md F-38. `cwd` was removed from
+   * this interface on purpose so a future edit cannot reintroduce the home-path
+   * leak without also editing the type.
+   */
   repo?: string;
 }
 

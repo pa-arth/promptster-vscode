@@ -7,6 +7,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('vscode', () => ({
+  window: {
+    createOutputChannel: () => ({
+      appendLine: () => {},
+      dispose: () => {},
+    }),
+  },
   workspace: {
     get workspaceFolders() {
       return mocks.workspaceFolders;
@@ -38,19 +44,40 @@ describe('sanitizePath', () => {
     });
   });
 
-  describe('paths outside workspace', () => {
-    it('returns <external> for parent directory paths', () => {
-      expect(sanitizePath('/Users/candidate/.ssh/id_rsa')).toBe('<external>');
+  // README.md:33 promises "Anything outside the workspace" is NOT captured.
+  // These must stay null, not a '<external>' placeholder: a placeholder redacts
+  // the path but still emits the event, and the event carries languageId,
+  // lineCount, dwell, scroll depth and typing-burst charCount for that file.
+  // See openspec editor-attention-capture/findings-1.md, finding F-33.
+  describe('paths outside workspace are dropped entirely', () => {
+    it('returns null for parent directory paths', () => {
+      expect(sanitizePath('/Users/candidate/.ssh/id_rsa')).toBeNull();
     });
 
-    it('returns <external> when no workspace is open', () => {
+    it('returns null for a sibling checkout of another repo', () => {
+      expect(sanitizePath('/Users/candidate/repos/other-private-repo/src/a.ts')).toBeNull();
+    });
+
+    it('returns null when no workspace is open', () => {
       mocks.workspaceFolders = undefined;
-      expect(sanitizePath('/anywhere/file.ts')).toBe('<external>');
+      expect(sanitizePath('/anywhere/file.ts')).toBeNull();
     });
 
-    it('returns <external> when workspace folders array is empty', () => {
+    it('returns null when workspace folders array is empty', () => {
       mocks.workspaceFolders = [];
-      expect(sanitizePath('/anywhere/file.ts')).toBe('<external>');
+      expect(sanitizePath('/anywhere/file.ts')).toBeNull();
+    });
+
+    it('never returns the <external> placeholder for any input', () => {
+      const inputs = [
+        '/Users/candidate/.ssh/id_rsa',
+        '/etc/hosts',
+        '/workspace/../sibling/file.ts',
+        '/workspace/src/ok.ts',
+      ];
+      for (const input of inputs) {
+        expect(sanitizePath(input)).not.toBe('<external>');
+      }
     });
   });
 

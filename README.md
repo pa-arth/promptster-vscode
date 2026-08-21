@@ -19,7 +19,7 @@ Editor telemetry extension for [Promptster](https://promptster.dev) hiring asses
 | **Edit patterns** | Typing speed (chars per burst), paste frequency, undo/redo |
 | **Focus & attention** | Editor focus/blur, idle periods (60s threshold) |
 | **Diagnostics** | Error/warning resolution counts per file |
-| **Terminal commands** | Commands and exit codes (not output) |
+| **Terminal commands** | Program and subcommand only (e.g. `git push`), exit code, duration — never the arguments, the full command line, or its output |
 | **File lifecycle** | File creates and deletes |
 
 ## What Is NOT Captured
@@ -32,10 +32,15 @@ Editor telemetry extension for [Promptster](https://promptster.dev) hiring asses
 - URLs or browser activity
 - Anything outside the workspace
 
+This list is enforced by a release gate, not by review: `test/gate/exclusionList.test.ts`
+runs the real collectors against a fake editor whose files, pastes, command lines and
+diagnostics are canary strings, and fails if any of them reach the wire.
+
 ## Privacy & Consent
 
 - A consent dialog is shown before any capture begins
 - All file paths are workspace-relative (no home directory paths leak)
+- Files opened outside the workspace are not reported at all — not even as a redacted path
 - Files matching `.promptsterignore` patterns are excluded
 - Capture can be paused/resumed at any time via the command palette
 

@@ -1,5 +1,4 @@
 import * as crypto from 'crypto';
-import * as vscode from 'vscode';
 import type { PromptsterConfig, PromptsterEvent, EventKind, EventSource, Integration } from '../types';
 import { detectIntegration } from '../utils/editorDetector';
 
@@ -10,12 +9,17 @@ export class EventFactory {
   constructor(private readonly config: PromptsterConfig) {
     this.integration = detectIntegration();
 
-    const folders = vscode.workspace.workspaceFolders;
+    // No `cwd`. It carried `workspaceFolders[0].uri.fsPath` — the ABSOLUTE
+    // workspace path, e.g. /Users/<name>/repos/<private-repo> — on every event,
+    // and the ingest route persists the whole envelope into raw_events. That is
+    // a home-directory path, which README.md:38 promises never leaks. Nothing on
+    // the hiring rail reads source.cwd (the hooks ingest route does not write it
+    // to sessions.cwd). If workspace identity is ever needed, send the folder
+    // basename, not the path. See openspec findings-1.md, finding F-38.
     this.source = {
       channel: 'ide-extension',
       integration: this.integration,
       emitter: 'promptster-vscode',
-      cwd: folders?.[0]?.uri.fsPath,
     };
   }
 
