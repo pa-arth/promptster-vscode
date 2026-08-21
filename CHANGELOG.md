@@ -1,5 +1,52 @@
 # Changelog
 
+## Unreleased
+
+Editor attention capture — the extension is wired to the session, honours what it
+publishes, and no longer manufactures attention on reattach.
+See `openspec/changes/editor-attention-capture`.
+
+### The extension can now actually activate
+- Reads `.promptster/session.json`, which is what `promptster start` writes.
+  `.promptster/config.json` was never written by anything, so the extension had
+  never activated on a real machine. `config.json` is still read as a fallback.
+- Accepts the CLI's `key` field for the candidate key (previously only `apiKey`).
+- Stops capturing once the candidate key expires — with a guard for Go's zero
+  time (`0001-01-01T00:00:00Z`), which would otherwise expire every session.
+
+### Consent comes from the session
+- No second consent dialog. Capture begins only when the session records that
+  the candidate accepted the canonical disclosure, and the extension never asks.
+- Consent is no longer a machine-wide `globalState` flag: it was shared across
+  assessments, so one session's consent covered the next one.
+- A pause now survives a reload. It was a module variable, so pause → reload
+  silently resumed capture.
+- The status bar says why it is not capturing, rather than "Not configured".
+
+### Reattach idempotence
+- `session_start` is emitted once per session, not once per attach.
+- Files reported by a previous attach are not re-reported when the editor
+  restores its open editors, and `isNewFile` stays truthful across a reload.
+- A rewrite of `session.json` (the CLI does several per session) no longer
+  restarts capture.
+
+### Privacy
+- Out-of-workspace files are dropped entirely. They were emitted with the path
+  redacted to `<external>`, which still shipped their language, line count,
+  dwell, scroll depth and typing volume.
+- `source.cwd` no longer carries the absolute workspace path on every event.
+- `.promptsterignore` is actually read. `loadIgnorePatterns()` was a stub.
+- Window focus/blur is no longer captured — the public candidate promise
+  disclaims focus tracking by name.
+- Keystroke-interval timing ships only under the cadence opt-in.
+
+### Tests
+- `test/gate/exclusionList.test.ts`: the published exclusion list is now a
+  release gate, run against the real collectors driven by a fake VSCode host.
+- `test/integration/sessionLifecycle.test.ts`: session config, consent and
+  reattach idempotence, driven through the real extension entry point.
+- 93 tests.
+
 ## 0.2.0
 
 Bug fixes, schema alignment with the backend canonical event format, and the first unit tests.

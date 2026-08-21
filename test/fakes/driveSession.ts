@@ -1,8 +1,9 @@
 import { EventFactory } from '../../src/events/factory';
 import { CollectorRegistry } from '../../src/collectors';
+import { defaultCaptureOptions } from '../../src/collectors/base';
 import { loadIgnorePatterns } from '../../src/utils/pathSanitizer';
 import type { PromptsterEvent } from '../../src/types';
-import { emitters, makeDocument, state, type FakeEditor } from './vscode';
+import { emitters, fireWatcher, makeDocument, state, type FakeEditor } from './vscode';
 
 /**
  * Canary strings. Each one is content that README.md:27-33 promises is never
@@ -53,7 +54,10 @@ function activate(editor: FakeEditor | undefined): void {
  * supplied by the caller so the test controls the debounce/idle timers
  * (vi.advanceTimersByTime under fake timers).
  */
-export function driveSession(advance: (ms: number) => void): {
+export function driveSession(
+  advance: (ms: number) => void,
+  opts: { captureKeystrokeCadence?: boolean } = {},
+): {
   events: PromptsterEvent[];
   registry: CollectorRegistry;
 } {
@@ -66,7 +70,11 @@ export function driveSession(advance: (ms: number) => void): {
     sessionId: 'sess_test_0001',
   });
   const transport = new CapturingTransport();
-  const registry = new CollectorRegistry(factory, transport as never);
+  const registry = new CollectorRegistry(factory, transport as never, {
+    ...defaultCaptureOptions(),
+    bootedAt: Date.now(),
+    captureKeystrokeCadence: opts.captureKeystrokeCadence === true,
+  });
   registry.activateAll();
 
   const failingTest = editorFor(
@@ -171,13 +179,10 @@ export function driveSession(advance: (ms: number) => void): {
   emitters.changeDiagnostics.fire({ uris: [{ scheme: 'file', fsPath: diagPath }] });
 
   // --- file lifecycle ------------------------------------------------------
-  emitters.fileCreate.fire({ scheme: 'file', fsPath: `${WORKSPACE_ROOT}/src/token.ts` });
-  emitters.fileDelete.fire({ scheme: 'file', fsPath: `${WORKSPACE_ROOT}/src/old.ts` });
+  fireWatcher('**/*', 'create', `${WORKSPACE_ROOT}/src/token.ts`);
+  fireWatcher('**/*', 'delete', `${WORKSPACE_ROOT}/src/old.ts`);
   // ...and a create outside the workspace, which must not be reported at all.
-  emitters.fileCreate.fire({
-    scheme: 'file',
-    fsPath: `/Users/candidate/.ssh/${CANARIES.externalFile}`,
-  });
+  fireWatcher('**/*', 'create', `/Users/candidate/.ssh/${CANARIES.externalFile}`);
 
   // --- blur, go idle, come back -------------------------------------------
   emitters.windowState.fire({ focused: false });

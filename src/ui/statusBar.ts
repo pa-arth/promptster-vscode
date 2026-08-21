@@ -8,9 +8,16 @@ export class StatusBarManager {
     this.item.command = 'promptster.viewDetails';
   }
 
-  showDormant(): void {
-    this.item.text = '$(circle-slash) Promptster: Not configured';
-    this.item.tooltip = 'No .promptster/config.json found in workspace';
+  /**
+   * Not capturing, with the reason.
+   *
+   * "Not capturing" and "why" travel together on purpose: a candidate whose
+   * session has no recorded consent must be able to see that the extension is
+   * dormant, not silently assume it is recording them.
+   */
+  showNotCapturing(reason: string): void {
+    this.item.text = '$(circle-slash) Promptster: Not capturing';
+    this.item.tooltip = reason;
     this.item.show();
   }
 

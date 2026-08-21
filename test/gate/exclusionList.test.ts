@@ -29,7 +29,7 @@ const README = fs.readFileSync(path.join(REPO_ROOT, 'README.md'), 'utf-8');
  * pinned to each other below.
  */
 
-/** README.md:27-33, verbatim, in order. Pinned so an edit to either trips here. */
+/** The published exclusion list, verbatim, in order. Pinned so an edit to either side trips here. */
 const PUBLISHED_EXCLUSIONS = [
   'File contents, source code, or diffs',
   'Clipboard text',
@@ -38,6 +38,7 @@ const PUBLISHED_EXCLUSIONS = [
   'Diagnostic error messages',
   'URLs or browser activity',
   'Anything outside the workspace',
+  'Window focus, or whether you switched to another application',
 ];
 
 function readmeExclusionList(): string[] {
@@ -52,7 +53,7 @@ function readmeExclusionList(): string[] {
 
 describe('published exclusion list ↔ shipped collectors', () => {
   describe('the published list itself', () => {
-    it('README.md still publishes exactly the seven audited exclusions', () => {
+    it('README.md still publishes exactly the audited exclusions', () => {
       // If this fails, the README changed. Re-audit the new or changed line
       // against the collectors before updating PUBLISHED_EXCLUSIONS.
       expect(readmeExclusionList()).toEqual(PUBLISHED_EXCLUSIONS);
@@ -211,6 +212,41 @@ describe('published exclusion list ↔ shipped collectors', () => {
     });
 
     /**
+     * The public candidate promise, on four separate marketing pages and in the
+     * glossary: "No webcam, no focus tracking, no proctoring overlay."
+     * The window-state API answers exactly the question those pages say we do
+     * not ask. See openspec findings-2.md, finding P-1.
+     */
+    it('does not track whether the editor window has focus', () => {
+      const subKinds = events.map((e) => e.data.subKind);
+      expect(subKinds).not.toContain('gain');
+      expect(subKinds).not.toContain('blur');
+      expect(subKinds).not.toContain('editor_gain');
+      expect(subKinds).not.toContain('editor_blur');
+      for (const file of sourceFiles()) {
+        expect(
+          fs.readFileSync(file, 'utf-8'),
+          `${path.relative(REPO_ROOT, file)} must not subscribe to window focus`,
+        ).not.toMatch(/window\s*\.\s*onDidChangeWindowState\s*\(/);
+      }
+    });
+
+    /**
+     * Keystroke-interval timing ships only under the cadence opt-in, which is
+     * the only place the canonical consent disclosure covers a timing signal.
+     * See openspec findings-2.md, finding P-2.
+     */
+    it('emits no keystroke cadence without the integrity opt-in', () => {
+      const bursts = events.filter((e) => e.data.subKind === 'typing_burst');
+      expect(bursts.length).toBeGreaterThan(0);
+      for (const burst of bursts) {
+        expect(burst.data).not.toHaveProperty('avgInterKeystrokeMs');
+        // The burst itself still ships — this is a gate on cadence, not on edits.
+        expect(burst.data.charCount).toBeGreaterThan(0);
+      }
+    });
+
+    /**
      * The catch-all. Every field name any collector puts on the wire is listed
      * here. A new field is not automatically a violation — but it must be looked
      * at against the seven claims above before it ships, and an allowlist is the
@@ -267,6 +303,16 @@ describe('published exclusion list ↔ shipped collectors', () => {
       }
       const unexpected = [...seen].filter((k) => !ALLOWED.has(k));
       expect(unexpected, `unaudited payload fields: ${unexpected.join(', ')}`).toEqual([]);
+    });
+
+    it('emits keystroke cadence when the candidate did opt in', () => {
+      resetState();
+      const withCadence = driveSession((ms) => vi.advanceTimersByTime(ms), {
+        captureKeystrokeCadence: true,
+      });
+      withCadence.registry.disposeAll();
+      const bursts = withCadence.events.filter((e) => e.data.subKind === 'typing_burst');
+      expect(bursts.some((b) => typeof b.data.avgInterKeystrokeMs === 'number')).toBe(true);
     });
 
     it('emits only string values that are paths, subkinds or redacted commands', () => {

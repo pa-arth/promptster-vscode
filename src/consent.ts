@@ -1,40 +1,49 @@
-import * as vscode from 'vscode';
-import { showConsentDetails } from './ui/consentWebview';
-
-const CONSENT_KEY = 'promptster.consentAcknowledged';
+import type { NotCapturingReason, PromptsterSession } from './types';
+import { isExpired } from './config';
 
 /**
- * Shows a consent notification before any telemetry capture begins.
- * Returns true if the candidate acknowledges, false if they dismiss.
+ * Whether this session may be captured, decided from the session itself.
+ *
+ * The extension does NOT present a consent dialog. It used to: `ensureConsent`
+ * raised a modal on activation and stored an acknowledgement in globalState.
+ * That was wrong in both directions.
+ *
+ * A candidate who already accepted the canonical disclosure when they ran
+ * `promptster start`, and is then asked again by a different component, learns
+ * that the consent screen does not describe the system — which damages the one
+ * part of this product that has to be believed. And a globalState flag is
+ * per-machine, not per-session: consent given for one assessment silently
+ * covered the next one.
+ *
+ * So: consent is a property of the session, recorded by the CLI, and read here.
+ * When it is absent the extension captures nothing and says so in the status
+ * bar. It never asks.
+ *
+ * The consent details webview is still reachable from the command palette
+ * ("Promptster: View Captured Signals"). That is a viewer the candidate opens,
+ * not a dialog we raise at them.
  */
-export async function ensureConsent(context: vscode.ExtensionContext): Promise<boolean> {
-  // Check if already acknowledged in this workspace
-  if (context.globalState.get<boolean>(CONSENT_KEY)) {
-    return true;
+export function captureDecision(
+  session: PromptsterSession | null,
+  paused: boolean,
+  now = Date.now(),
+): { capture: true } | { capture: false; reason: NotCapturingReason } {
+  if (paused) return { capture: false, reason: 'paused' };
+  if (!session) return { capture: false, reason: 'no-session' };
+  if (!session.consentAccepted) return { capture: false, reason: 'consent-not-recorded' };
+  if (isExpired(session, now)) return { capture: false, reason: 'session-expired' };
+  return { capture: true };
+}
+
+export function reasonText(reason: NotCapturingReason): string {
+  switch (reason) {
+    case 'no-session':
+      return 'No Promptster session in this workspace. Run `promptster start`.';
+    case 'consent-not-recorded':
+      return 'Not capturing — this session has no recorded consent.';
+    case 'session-expired':
+      return 'Not capturing — this session has expired.';
+    case 'paused':
+      return 'Capture is paused — run "Promptster: Resume Capture".';
   }
-
-  const choice = await vscode.window.showInformationMessage(
-    'Promptster Assessment Active — This extension captures your development process ' +
-    '(file navigation, edit patterns, terminal commands) for assessment evaluation. ' +
-    'No file contents or code are captured.',
-    { modal: true },
-    'I Understand',
-    'View Details',
-  );
-
-  if (choice === 'View Details') {
-    showConsentDetails(context);
-    // After viewing details, ask again
-    const secondChoice = await vscode.window.showInformationMessage(
-      'Do you acknowledge that Promptster will capture development process signals?',
-      { modal: true },
-      'I Understand',
-    );
-    if (secondChoice !== 'I Understand') return false;
-  } else if (choice !== 'I Understand') {
-    return false;
-  }
-
-  await context.globalState.update(CONSENT_KEY, true);
-  return true;
 }

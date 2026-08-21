@@ -10,7 +10,6 @@ export class FileReadingCollector extends BaseCollector {
   /** Tracks when the current file was focused. */
   private currentFile: string | null = null;
   private currentFileOpenedAt: number = 0;
-  private openedFiles = new Set<string>();
 
   activate(): void {
     // File open — fires when a text editor becomes visible
@@ -100,22 +99,35 @@ export class FileReadingCollector extends BaseCollector {
       );
     }
 
-    // Emit file_open if this file hasn't been opened before in this session
-    const isNew = !this.openedFiles.has(filePath);
+    // Emit file_open if this file hasn't been opened before in this session.
+    // `openedFiles` is seeded from persisted state and survives an editor
+    // reload, so `isNewFile` stays truthful across a reattach.
+    const isNew = !this.options.openedFiles.has(filePath);
     if (isNew) {
-      this.openedFiles.add(filePath);
+      this.options.openedFiles.add(filePath);
+      this.options.onFileOpened(filePath);
     }
 
-    this.transport.enqueue(
-      this.factory.create('editor_focus', {
-        subKind: 'file_open',
-        filePath,
-        fileExtension: filePath.includes('.') ? '.' + filePath.split('.').pop() : '',
-        languageId: editor.document.languageId,
-        lineCount: editor.document.lineCount,
-        isNewFile: isNew,
-      }),
-    );
+    // Reattach suppression. When the editor reloads, VSCode restores the open
+    // editors and re-fires onDidChangeActiveTextEditor for them. Emitting
+    // file_open there manufactures attention that did not occur, and every
+    // derived measure over these events is a count. Inside the reattach window,
+    // a file we have already recorded is a restoration, not a visit.
+    const isReattachRestore =
+      !isNew && now - this.options.bootedAt < this.options.reattachWindowMs;
+
+    if (!isReattachRestore) {
+      this.transport.enqueue(
+        this.factory.create('editor_focus', {
+          subKind: 'file_open',
+          filePath,
+          fileExtension: filePath.includes('.') ? '.' + filePath.split('.').pop() : '',
+          languageId: editor.document.languageId,
+          lineCount: editor.document.lineCount,
+          isNewFile: isNew,
+        }),
+      );
+    }
 
     this.currentFile = filePath;
     this.currentFileOpenedAt = now;

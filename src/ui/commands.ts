@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { showConsentDetails } from './consentWebview';
 
 export type PauseCallback = () => void | Promise<void>;
-export type ResumeCallback = () => void;
+export type ResumeCallback = () => void | Promise<void>;
 
 export function registerCommands(
   context: vscode.ExtensionContext,
@@ -26,8 +26,8 @@ export function registerCommands(
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('promptster.resume', () => {
-      callbacks.onResume();
+    vscode.commands.registerCommand('promptster.resume', async () => {
+      await callbacks.onResume();
       vscode.window.showInformationMessage('Promptster capture resumed.');
     }),
   );

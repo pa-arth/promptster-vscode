@@ -1,6 +1,6 @@
 import type { EventFactory } from '../events/factory';
 import type { TransportLayer } from '../transport';
-import type { BaseCollector } from './base';
+import { defaultCaptureOptions, type BaseCollector, type CaptureOptions } from './base';
 import { FileReadingCollector } from './fileReading';
 import { NavigationCollector } from './navigation';
 import { EditPatternCollector } from './editPattern';
@@ -13,15 +13,19 @@ import { log } from '../utils/logger';
 export class CollectorRegistry {
   private collectors: BaseCollector[] = [];
 
-  constructor(factory: EventFactory, transport: TransportLayer) {
+  constructor(
+    factory: EventFactory,
+    transport: TransportLayer,
+    options: CaptureOptions = defaultCaptureOptions(),
+  ) {
     this.collectors = [
-      new FileReadingCollector(factory, transport),
-      new NavigationCollector(factory, transport),
-      new EditPatternCollector(factory, transport),
-      new FocusCollector(factory, transport),
-      new DiagnosticCollector(factory, transport),
-      new TerminalCollector(factory, transport),
-      new FileLifecycleCollector(factory, transport),
+      new FileReadingCollector(factory, transport, options),
+      new NavigationCollector(factory, transport, options),
+      new EditPatternCollector(factory, transport, options),
+      new FocusCollector(factory, transport, options),
+      new DiagnosticCollector(factory, transport, options),
+      new TerminalCollector(factory, transport, options),
+      new FileLifecycleCollector(factory, transport, options),
     ];
   }
 
