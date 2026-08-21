@@ -386,3 +386,96 @@ describe('session lifecycle', () => {
     });
   });
 });
+
+/**
+ * `.promptster/editor-capture.json` — what `promptster doctor` reads.
+ *
+ * An installed-but-dormant extension is the failure mode that matters: it
+ * produces a session with no attention events, which reads exactly like a
+ * candidate who opened no files. "Present" is not a sufficient check, so the
+ * extension has to report its own state.
+ */
+describe('capture state file (promptster doctor, §2.2)', () => {
+  let root: string;
+
+  beforeEach(() => {
+    resetState();
+    posted = [];
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'promptster-state-'));
+    state.workspaceRoot = root;
+    memento = new FakeMemento();
+    commands.registered.clear();
+    stubFetch();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  function readState(): Record<string, unknown> {
+    return JSON.parse(
+      fs.readFileSync(path.join(root, '.promptster/editor-capture.json'), 'utf-8'),
+    ) as Record<string, unknown>;
+  }
+
+  it('reports capturing, with the session and version, when it is', async () => {
+    writeSessionFile(root);
+    const ext = await loadExtension();
+    await activateExtension(ext, '0.3.0');
+    const s = readState();
+    expect(s.capturing).toBe(true);
+    expect(s.sessionId).toBe('sess_abc123');
+    expect(s.extensionVersion).toBe('0.3.0');
+    expect(s.editor).toBe('vscode');
+    expect(typeof s.updatedAt).toBe('string');
+    expect(s.reason).toBeUndefined();
+  });
+
+  it('reports why it is not capturing when consent is absent', async () => {
+    writeSessionFile(root, { consentAccepted: false });
+    const ext = await loadExtension();
+    await activateExtension(ext);
+    const s = readState();
+    expect(s.capturing).toBe(false);
+    expect(s.reason).toBe('consent-not-recorded');
+    // Present, activated, and saying it is dormant — the state doctor must be
+    // able to tell apart from "not installed".
+    expect(s.sessionId).toBe('sess_abc123');
+  });
+
+  it('reports no-session when there is nothing to capture for', async () => {
+    fs.mkdirSync(path.join(root, '.promptster'), { recursive: true });
+    const ext = await loadExtension();
+    await activateExtension(ext);
+    const s = readState();
+    expect(s.capturing).toBe(false);
+    expect(s.reason).toBe('no-session');
+  });
+
+  it('reports paused, and keeps reporting it across a reload', async () => {
+    writeSessionFile(root);
+    const first = await loadExtension();
+    await activateExtension(first);
+    await runCommand('promptster.pause');
+    expect(readState()).toMatchObject({ capturing: false, reason: 'paused' });
+
+    const second = await reloadExtension(first);
+    await activateExtension(second);
+    expect(readState()).toMatchObject({ capturing: false, reason: 'paused' });
+  });
+
+  it('is written where the CLI looks and the sanitizer refuses to report', async () => {
+    writeSessionFile(root);
+    const ext = await loadExtension();
+    await activateExtension(ext);
+    expect(fs.existsSync(path.join(root, '.promptster/editor-capture.json'))).toBe(true);
+    // It lives under .promptster/, which pathSanitizer drops, so writing it can
+    // never itself become a captured event.
+    activateFile({ document: makeDocument(path.join(root, '.promptster/editor-capture.json'), '{}') });
+    await flush();
+    expect(posted.filter((p) => p.event.data.subKind === 'file_open')).toEqual([]);
+  });
+});

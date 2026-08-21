@@ -45,7 +45,14 @@ See `openspec/changes/editor-attention-capture`.
   release gate, run against the real collectors driven by a fake VSCode host.
 - `test/integration/sessionLifecycle.test.ts`: session config, consent and
   reattach idempotence, driven through the real extension entry point.
-- 93 tests.
+- 98 tests.
+
+### For `promptster doctor`
+- Writes `.promptster/editor-capture.json` on every reconcile: extension
+  version, editor, session id, whether it is capturing, and why not when it is
+  not. An installed-but-dormant extension produces a session with no attention
+  events — indistinguishable from a candidate who opened no files — so
+  "present" is not a sufficient check and the extension has to say so itself.
 
 ### Release
 - `scripts/build-vsix.sh` builds the `.vsix` reproducibly (fixed zip entry order,

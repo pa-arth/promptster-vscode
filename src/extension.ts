@@ -6,6 +6,7 @@ import { TransportLayer } from './transport';
 import { CollectorRegistry } from './collectors';
 import type { CaptureOptions } from './collectors/base';
 import { SessionStore } from './sessionStore';
+import { writeCaptureState } from './captureState';
 import { StatusBarManager } from './ui/statusBar';
 import { registerCommands } from './ui/commands';
 import { loadIgnorePatterns } from './utils/pathSanitizer';
@@ -21,20 +22,25 @@ let transport: TransportLayer | undefined;
 let collectors: CollectorRegistry | undefined;
 /** The session capture is currently running for, if any. */
 let running: PromptsterSession | undefined;
+/** Version of the running extension, read from the manifest at activation. */
+let extensionVersion = 'unknown';
 
 export function activate(context: vscode.ExtensionContext): void {
   log('Promptster extension activating');
 
   statusBar = new StatusBarManager();
   store = new SessionStore(context.globalState);
+  extensionVersion = context.extension?.packageJSON?.version ?? 'unknown';
   context.subscriptions.push(statusBar);
 
   registerCommands(context, {
     onPause: async () => {
       const session = running ?? readSession();
       if (session) await store.update(session.sessionId, { paused: true });
-      await stopCapture();
-      statusBar.showPaused();
+      // Through reconcile, not around it. Pausing has to leave the same
+      // status bar, the same teardown and the same reported capture state as
+      // every other way of not capturing.
+      await reconcile(context);
       log('Capture paused by user');
     },
     onResume: async () => {
@@ -78,7 +84,16 @@ async function reconcile(context: vscode.ExtensionContext): Promise<void> {
       log(`Stopping capture: ${decision.reason}`);
       await stopCapture();
     }
-    statusBar.showNotCapturing(reasonText(decision.reason));
+    if (decision.reason === 'paused') {
+      statusBar.showPaused();
+    } else {
+      statusBar.showNotCapturing(reasonText(decision.reason));
+    }
+    writeCaptureState(extensionVersion, {
+      capturing: false,
+      sessionId: session?.sessionId,
+      reason: decision.reason,
+    });
     return;
   }
 
@@ -90,6 +105,7 @@ async function reconcile(context: vscode.ExtensionContext): Promise<void> {
     // changed something the extension does not care about.
     log('Session state changed but capture is unaffected — leaving it running');
     statusBar.showCapturing();
+    writeCaptureState(extensionVersion, { capturing: true, sessionId: next.sessionId });
     return;
   }
 
@@ -152,7 +168,7 @@ async function startCapture(
       transport.enqueue(
         factory.create('session_start', {
           editorVersion: vscode.version,
-          extensionVersion: context.extension?.packageJSON?.version ?? 'unknown',
+          extensionVersion,
         }),
       );
       await store.update(session.sessionId, { sessionStartEmitted: true });
@@ -160,6 +176,7 @@ async function startCapture(
       log('session_start already recorded for this session — reattach, not a new start');
     }
 
+    writeCaptureState(extensionVersion, { capturing: true, sessionId: session.sessionId });
     log(`Capture started for session ${session.sessionId} (from ${session.sourceFile})`);
   } catch (err) {
     logError('Failed to start capture', err);
