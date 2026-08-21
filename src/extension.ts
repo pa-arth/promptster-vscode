@@ -23,11 +23,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Register commands (available even when dormant)
   registerCommands(context, {
-    onPause: () => {
+    onPause: async () => {
       paused = true;
-      transport?.stop();
       collectors?.disposeAll();
       collectors = undefined;
+      await transport?.stop();
+      transport = undefined;
       statusBar.showPaused();
       log('Capture paused by user');
     },
@@ -62,7 +63,7 @@ export function activate(context: vscode.ExtensionContext): void {
     if (newConfig) {
       void bootWithConsent(context, newConfig);
     } else {
-      stopCapture();
+      void stopCapture();
       statusBar.showDormant();
     }
   });
@@ -84,8 +85,8 @@ async function bootWithConsent(
 }
 
 function startCapture(context: vscode.ExtensionContext, config: PromptsterConfig): void {
-  // Stop any existing capture first
-  stopCapture();
+  // Stop any existing capture first (fire-and-forget; final flush continues in background)
+  void stopCapture();
 
   try {
     // Load ignore patterns
@@ -104,12 +105,11 @@ function startCapture(context: vscode.ExtensionContext, config: PromptsterConfig
     transport.start();
     statusBar.showCapturing();
 
-    // Emit session_start event
+    // Emit session_start event (canonical top-level kind)
     transport.enqueue(
-      factory.create('editor_focus', {
-        subKind: 'session_start',
+      factory.create('session_start', {
         editorVersion: vscode.version,
-        extensionVersion: '0.1.0',
+        extensionVersion: '0.2.0',
       }),
     );
 
@@ -120,18 +120,19 @@ function startCapture(context: vscode.ExtensionContext, config: PromptsterConfig
   }
 }
 
-function stopCapture(): void {
+async function stopCapture(): Promise<void> {
   if (collectors) {
     collectors.disposeAll();
     collectors = undefined;
   }
   if (transport) {
-    transport.stop();
+    const t = transport;
     transport = undefined;
+    await t.stop();
   }
 }
 
-export function deactivate(): void {
+export async function deactivate(): Promise<void> {
   log('Promptster extension deactivating');
-  stopCapture();
+  await stopCapture();
 }

@@ -37,8 +37,8 @@ export type EditorFocusSubKind =
   | 'file_open'
   | 'file_close'
   | 'tab_switch'
-  | 'editor_blur'
-  | 'editor_gain'
+  | 'blur'
+  | 'gain'
   | 'scroll_depth';
 
 export type EditorEditSubKind =
@@ -50,13 +50,20 @@ export type EditorEditSubKind =
 
 export type EditorIdleSubKind = 'idle_start' | 'idle_end';
 
+/**
+ * Canonical event kinds, aligned with the backend's CanonicalEventKind enum
+ * in packages/event-schema. Editor-* kinds use LoosePayloadEvent (any data
+ * shape); session_start, command, file_create, file_delete use the strict
+ * schemas — see types.ts comments at each emission site for required fields.
+ */
 export type EventKind =
   | 'editor_focus'
   | 'editor_edit'
   | 'editor_idle'
   | 'command'
   | 'file_create'
-  | 'file_delete';
+  | 'file_delete'
+  | 'session_start';
 
 // --- Common event envelope ---
 

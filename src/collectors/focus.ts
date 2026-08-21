@@ -11,6 +11,7 @@ export class FocusCollector extends BaseCollector {
   private idleTimer: ReturnType<typeof setTimeout> | undefined;
   private isIdle = false;
   private lastActivityAt = Date.now();
+  private idleStartedAt = 0;
   private lastAction: string = 'unknown';
 
   activate(): void {
@@ -22,7 +23,7 @@ export class FocusCollector extends BaseCollector {
         if (state.focused) {
           this.transport.enqueue(
             this.factory.create('editor_focus', {
-              subKind: 'editor_gain',
+              subKind: 'gain',
               lastActiveFile: activeFile,
             }),
           );
@@ -30,7 +31,7 @@ export class FocusCollector extends BaseCollector {
         } else {
           this.transport.enqueue(
             this.factory.create('editor_focus', {
-              subKind: 'editor_blur',
+              subKind: 'blur',
               lastActiveFile: activeFile,
             }),
           );
@@ -67,11 +68,12 @@ export class FocusCollector extends BaseCollector {
 
   private recordActivity(action: string): void {
     this.lastAction = action;
-    this.lastActivityAt = Date.now();
+    const now = Date.now();
 
     if (this.isIdle) {
+      const idleDurationMs = this.idleStartedAt ? now - this.idleStartedAt : 0;
       this.isIdle = false;
-      const idleDurationMs = Date.now() - this.lastActivityAt;
+      this.idleStartedAt = 0;
       this.transport.enqueue(
         this.factory.create('editor_idle', {
           subKind: 'idle_end',
@@ -82,6 +84,7 @@ export class FocusCollector extends BaseCollector {
       );
     }
 
+    this.lastActivityAt = now;
     this.resetIdleTimer();
   }
 
@@ -90,6 +93,7 @@ export class FocusCollector extends BaseCollector {
 
     this.idleTimer = setTimeout(() => {
       this.isIdle = true;
+      this.idleStartedAt = Date.now();
       this.transport.enqueue(
         this.factory.create('editor_idle', {
           subKind: 'idle_start',

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { BaseCollector } from './base';
+import { redactCommand } from '../utils/commandRedactor';
 
 /**
  * Tracks terminal command execution in the integrated terminal.
@@ -31,13 +32,20 @@ export class TerminalCollector extends BaseCollector {
             this.commandStartTimes.delete(cmd);
 
             const durationMs = startTime ? Date.now() - startTime : undefined;
+            const redacted = redactCommand(cmd);
 
             this.transport.enqueue(
               this.factory.create('command', {
-                command: cmd,
+                // `command` is the canonical strict-schema field; we send the
+                // redacted display form so it stays useful without leaking secrets.
+                command: redacted.display,
+                program: redacted.program,
+                subcommand: redacted.subcommand,
+                tokenCount: redacted.tokenCount,
+                hasFlags: redacted.hasFlags,
+                hadPotentialSecret: redacted.hadPotentialSecret,
                 exitCode: e.exitCode,
                 durationMs,
-                _sourceExtension: true,
               }),
             );
           },
@@ -45,25 +53,5 @@ export class TerminalCollector extends BaseCollector {
       );
     }
 
-    // Always track terminal open/close as a lightweight signal
-    this.disposables.push(
-      vscode.window.onDidOpenTerminal(() => {
-        this.transport.enqueue(
-          this.factory.create('editor_focus', {
-            subKind: 'terminal_open',
-          }),
-        );
-      }),
-    );
-
-    this.disposables.push(
-      vscode.window.onDidCloseTerminal(() => {
-        this.transport.enqueue(
-          this.factory.create('editor_focus', {
-            subKind: 'terminal_close',
-          }),
-        );
-      }),
-    );
   }
 }

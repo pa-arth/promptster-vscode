@@ -26,12 +26,18 @@ export class FileReadingCollector extends BaseCollector {
         const filePath = sanitizePath(doc.uri.fsPath);
         if (!filePath) return;
 
-        this.transport.enqueue(
-          this.factory.create('editor_focus', {
-            subKind: 'file_close',
-            filePath,
-          }),
-        );
+        const payload: Record<string, unknown> = {
+          subKind: 'file_close',
+          filePath,
+        };
+
+        if (filePath === this.currentFile && this.currentFileOpenedAt) {
+          payload.dwellMs = Date.now() - this.currentFileOpenedAt;
+          this.currentFile = null;
+          this.currentFileOpenedAt = 0;
+        }
+
+        this.transport.enqueue(this.factory.create('editor_focus', payload));
       }),
     );
 
@@ -65,15 +71,6 @@ export class FileReadingCollector extends BaseCollector {
 
   private emitDwellAndSwitch(editor: vscode.TextEditor | undefined): void {
     const now = Date.now();
-
-    // Emit dwell for previous file
-    if (this.currentFile && this.currentFileOpenedAt) {
-      const dwellMs = now - this.currentFileOpenedAt;
-      // Only emit if they spent more than 500ms (skip accidental flickers)
-      if (dwellMs > 500) {
-        // Dwell is captured as part of file_close or tab_switch, not a separate event
-      }
-    }
 
     if (!editor) {
       this.currentFile = null;
