@@ -7,3 +7,7 @@ node_modules/**
 tsconfig.json
 vitest.config.ts
 **/*.map
+scripts/**
+dist-vsix/**
+**/*.d.ts
+.promptsterignore.default

@@ -93,26 +93,32 @@ export class EditPatternCollector extends BaseCollector {
     const now = Date.now();
     const burstDurationMs = now - this.burstStartTime;
 
-    // Compute average inter-keystroke interval
-    let avgInterKeystrokeMs = 0;
-    if (this.burstKeystrokeTimestamps.length > 1) {
+    const payload: Record<string, unknown> = {
+      subKind: 'typing_burst',
+      filePath: this.burstFile,
+      burstDurationMs,
+      charCount: this.burstCharCount,
+      lineRange: { start: this.burstStartLine, end: this.burstEndLine },
+    };
+
+    // Average inter-keystroke interval is keystroke-cadence timing. The
+    // canonical consent disclosure covers timing signals ONLY under the cadence
+    // opt-in ("Timing between prompts and commands (only if you enable cadence
+    // checks)"), so it ships only when the session recorded that opt-in. The
+    // burst itself — how much was typed, over how long, where — is covered by
+    // "Code changes and file edits in the assessment workspace" and always
+    // ships. See openspec findings-2.md, finding P-2.
+    if (this.options.captureKeystrokeCadence && this.burstKeystrokeTimestamps.length > 1) {
       const intervals: number[] = [];
       for (let i = 1; i < this.burstKeystrokeTimestamps.length; i++) {
         intervals.push(this.burstKeystrokeTimestamps[i] - this.burstKeystrokeTimestamps[i - 1]);
       }
-      avgInterKeystrokeMs = Math.round(intervals.reduce((a, b) => a + b, 0) / intervals.length);
+      payload.avgInterKeystrokeMs = Math.round(
+        intervals.reduce((a, b) => a + b, 0) / intervals.length,
+      );
     }
 
-    this.transport.enqueue(
-      this.factory.create('editor_edit', {
-        subKind: 'typing_burst',
-        filePath: this.burstFile,
-        burstDurationMs,
-        charCount: this.burstCharCount,
-        lineRange: { start: this.burstStartLine, end: this.burstEndLine },
-        avgInterKeystrokeMs,
-      }),
-    );
+    this.transport.enqueue(this.factory.create('editor_edit', payload));
 
     this.resetBurst();
   }

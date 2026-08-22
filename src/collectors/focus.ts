@@ -11,32 +11,17 @@ export class FocusCollector extends BaseCollector {
   private idleTimer: ReturnType<typeof setTimeout> | undefined;
   private isIdle = false;
   private lastActivityAt = Date.now();
+  private idleStartedAt = 0;
   private lastAction: string = 'unknown';
 
   activate(): void {
-    // Window focus/blur
-    this.disposables.push(
-      vscode.window.onDidChangeWindowState((state) => {
-        const activeFile = this.getActiveFilePath();
-
-        if (state.focused) {
-          this.transport.enqueue(
-            this.factory.create('editor_focus', {
-              subKind: 'editor_gain',
-              lastActiveFile: activeFile,
-            }),
-          );
-          this.resetIdleTimer();
-        } else {
-          this.transport.enqueue(
-            this.factory.create('editor_focus', {
-              subKind: 'editor_blur',
-              lastActiveFile: activeFile,
-            }),
-          );
-        }
-      }),
-    );
+    // No window focus/blur events. The window-state API answers "is the
+    // candidate still looking at the editor", which is focus tracking — the
+    // thing the public candidate promise disclaims by name on four separate
+    // pages ("No webcam, no focus tracking, no proctoring overlay"). Idle
+    // detection below stays: it is derived from activity in the editor, not
+    // from whether the window has the OS focus, and it is what a reviewer needs
+    // to read a gap in the timeline. See openspec findings-2.md, finding P-1.
 
     // Activity signals that reset the idle timer
     this.disposables.push(
@@ -67,11 +52,12 @@ export class FocusCollector extends BaseCollector {
 
   private recordActivity(action: string): void {
     this.lastAction = action;
-    this.lastActivityAt = Date.now();
+    const now = Date.now();
 
     if (this.isIdle) {
+      const idleDurationMs = this.idleStartedAt ? now - this.idleStartedAt : 0;
       this.isIdle = false;
-      const idleDurationMs = Date.now() - this.lastActivityAt;
+      this.idleStartedAt = 0;
       this.transport.enqueue(
         this.factory.create('editor_idle', {
           subKind: 'idle_end',
@@ -82,6 +68,7 @@ export class FocusCollector extends BaseCollector {
       );
     }
 
+    this.lastActivityAt = now;
     this.resetIdleTimer();
   }
 
@@ -90,6 +77,7 @@ export class FocusCollector extends BaseCollector {
 
     this.idleTimer = setTimeout(() => {
       this.isIdle = true;
+      this.idleStartedAt = Date.now();
       this.transport.enqueue(
         this.factory.create('editor_idle', {
           subKind: 'idle_start',

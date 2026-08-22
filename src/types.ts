@@ -13,7 +13,12 @@ export interface EventSource {
   channel: SourceChannel;
   integration: Integration;
   emitter: 'promptster-vscode';
-  cwd?: string;
+  /**
+   * Workspace identity, if ever needed. NOT an absolute path — see
+   * events/factory.ts and openspec findings-1.md F-38. `cwd` was removed from
+   * this interface on purpose so a future edit cannot reintroduce the home-path
+   * leak without also editing the type.
+   */
   repo?: string;
 }
 
@@ -33,12 +38,15 @@ export interface EventProvenance {
 
 // --- Event kinds we emit ---
 
+/**
+ * Window focus/blur ('gain'/'blur') is deliberately NOT here. The public
+ * candidate promise disclaims focus tracking by name — see openspec
+ * findings-2.md, finding P-1.
+ */
 export type EditorFocusSubKind =
   | 'file_open'
   | 'file_close'
   | 'tab_switch'
-  | 'editor_blur'
-  | 'editor_gain'
   | 'scroll_depth';
 
 export type EditorEditSubKind =
@@ -50,13 +58,20 @@ export type EditorEditSubKind =
 
 export type EditorIdleSubKind = 'idle_start' | 'idle_end';
 
+/**
+ * Canonical event kinds, aligned with the backend's CanonicalEventKind enum
+ * in packages/event-schema. Editor-* kinds use LoosePayloadEvent (any data
+ * shape); session_start, command, file_create, file_delete use the strict
+ * schemas — see types.ts comments at each emission site for required fields.
+ */
 export type EventKind =
   | 'editor_focus'
   | 'editor_edit'
   | 'editor_idle'
   | 'command'
   | 'file_create'
-  | 'file_delete';
+  | 'file_delete'
+  | 'session_start';
 
 // --- Common event envelope ---
 
@@ -79,3 +94,35 @@ export interface PromptsterConfig {
   apiKey: string;
   sessionId: string;
 }
+
+/**
+ * The assessment session as the CLI recorded it, read from
+ * `.promptster/session.json`.
+ *
+ * The extension has no build-time API URL and no consent state of its own: both
+ * come from the session the CLI started. See config.ts.
+ */
+export interface PromptsterSession extends PromptsterConfig {
+  /**
+   * The candidate accepted the canonical consent disclosure. Capture does not
+   * begin without it, and the extension never asks a second time.
+   */
+  consentAccepted: boolean;
+  /**
+   * The candidate additionally opted in to cadence-based integrity checks. The
+   * disclosure covers keystroke-interval timing only under this opt-in, so
+   * `avgInterKeystrokeMs` is emitted only when it is true.
+   */
+  consentToIntegrity: boolean;
+  /** Candidate-key expiry. Capture stops once it passes. */
+  expiresAt?: string;
+  /** Which file the session state was read from, for diagnostics. */
+  sourceFile: string;
+}
+
+/** Why the extension is not capturing, when it is not. */
+export type NotCapturingReason =
+  | 'no-session'
+  | 'consent-not-recorded'
+  | 'session-expired'
+  | 'paused';

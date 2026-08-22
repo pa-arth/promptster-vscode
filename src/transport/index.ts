@@ -27,13 +27,13 @@ export class TransportLayer {
     log('Transport started');
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
       this.flushTimer = undefined;
     }
-    // Final flush on stop
-    void this.flush();
+    // Final flush on stop — await so we don't lose in-flight events on shutdown
+    await this.flush();
     log('Transport stopped');
   }
 

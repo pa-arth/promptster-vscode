@@ -5,21 +5,21 @@ Editor telemetry extension for [Promptster](https://promptster.dev) hiring asses
 ## How It Works
 
 1. A candidate receives an assessment link and runs `promptster start` in their workspace
-2. The CLI writes `.promptster/config.json` with their API key and session ID
-3. This extension auto-detects the config and begins capturing development signals
+2. The CLI writes `.promptster/session.json` with their API key, session ID, API URL, and the consent they gave
+3. This extension reads that file and begins capturing development signals
 4. Signals are sent to the Promptster backend for analysis in the hiring dashboard
 
-**No manual configuration required** — the extension activates automatically when it finds a Promptster config in the workspace.
+**No manual configuration required, and no second consent screen** — the extension has no API URL of its own and no consent of its own. Both come from the session. If the session records no consent, the extension captures nothing and says so in the status bar.
 
 ## What Is Captured
 
 | Signal | Details |
 |--------|---------|
 | **File navigation** | Which files you open, how long you view them, scroll depth |
-| **Edit patterns** | Typing speed (chars per burst), paste frequency, undo/redo |
-| **Focus & attention** | Editor focus/blur, idle periods (60s threshold) |
+| **Edit patterns** | Characters per typing burst, burst duration, paste size. Keystroke-interval timing only if you enabled cadence checks at `promptster start` |
+| **Attention** | Idle periods in the editor (60s threshold). Not whether the editor window has focus |
 | **Diagnostics** | Error/warning resolution counts per file |
-| **Terminal commands** | Commands and exit codes (not output) |
+| **Terminal commands** | Program and subcommand only (e.g. `git push`), exit code, duration — never the arguments, the full command line, or its output |
 | **File lifecycle** | File creates and deletes |
 
 ## What Is NOT Captured
@@ -31,11 +31,17 @@ Editor telemetry extension for [Promptster](https://promptster.dev) hiring asses
 - Diagnostic error messages
 - URLs or browser activity
 - Anything outside the workspace
+- Window focus, or whether you switched to another application
+
+This list is enforced by a release gate, not by review: `test/gate/exclusionList.test.ts`
+runs the real collectors against a fake editor whose files, pastes, command lines and
+diagnostics are canary strings, and fails if any of them reach the wire.
 
 ## Privacy & Consent
 
-- A consent dialog is shown before any capture begins
+- Capture begins only when the session records that you accepted the consent disclosure — the extension never asks a second time
 - All file paths are workspace-relative (no home directory paths leak)
+- Files opened outside the workspace are not reported at all — not even as a redacted path
 - Files matching `.promptsterignore` patterns are excluded
 - Capture can be paused/resumed at any time via the command palette
 
@@ -54,7 +60,7 @@ The extension shows its state in the status bar:
 
 - `$(eye) Promptster: Capturing` — actively capturing signals
 - `$(eye-closed) Promptster: Paused` — capture paused by user
-- `$(circle-slash) Promptster: Not configured` — no `.promptster/config.json` found
+- `$(circle-slash) Promptster: Not capturing` — hover for the reason (no session, no recorded consent, expired, or paused)
 
 ## Requirements
 

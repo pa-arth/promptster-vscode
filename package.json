@@ -2,7 +2,7 @@
   "name": "promptster",
   "displayName": "Promptster Assessment",
   "description": "Editor telemetry for Promptster hiring assessments — captures development process signals for evaluation.",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "publisher": "Promptster",
   "icon": "assets/icon.png",
   "license": "MIT",
@@ -61,7 +61,9 @@
     "lint": "eslint src",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package": "vsce package --no-dependencies"
+    "package": "vsce package --no-dependencies",
+    "build:vsix": "scripts/build-vsix.sh",
+    "release": "scripts/build-vsix.sh --tag"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
