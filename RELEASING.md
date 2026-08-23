@@ -52,3 +52,46 @@ touch src/*.ts
 The tag message carries the sha256. Given a tag, anyone can check out that
 commit, rebuild, and confirm the artifact a candidate's editor was asked to
 install is the one the tag names.
+
+## The public registry copy, and why it is a liability
+
+**The distribution path is the CLI, not a marketplace.** `promptster start`
+sideloads the embedded `.vsix` with `--install-extension … --force` on every
+run, so the extension version a candidate gets is bound to the CLI version they
+installed. There is no auto-update and nothing to click in a marketplace.
+
+That is the intended path, but it is not the only copy that exists:
+
+| registry | what it serves | checked |
+|---|---|---|
+| VS Code Marketplace | **nothing** — `Promptster.promptster` is not published | 2026-08-23 |
+| Open VSX (Cursor's registry) | **`Promptster.promptster@0.1.0`** | 2026-08-23 |
+
+`0.1.0` predates this document and the privacy work. Unpacked and checked on
+2026-08-23, that published build:
+
+- emits window **focus/blur** from `dist/collectors/focus.js` — which the
+  candidate promise disclaims by name, and which `editor-attention-capture`
+  finding P-1 is the reason 0.3.0 does not emit;
+- carries **no command redactor** in `dist/collectors/terminal.js`.
+
+So a build under our publisher name, installable by anyone today, does a thing
+we publicly say we do not do. Two ways out, and they are not equivalent:
+
+1. **Request removal** of the version from Open VSX. Publishers cannot delete a
+   published version themselves; it goes through the registry's admins.
+2. **Publish the current version over it** so `latest` resolves to a build that
+   honours the promise:
+   ```sh
+   pnpm run release                       # builds dist-vsix/promptster-<version>.vsix
+   pnpm dlx ovsx publish dist-vsix/promptster-<version>.vsix -p "$OVSX_PAT"
+   ```
+   This does **not** retract 0.1.0 — a pinned install of it still resolves.
+
+Publishing to a registry at all becomes mandatory the moment a hosted lane
+ships: `devcontainer.json`'s `customizations.vscode.extensions` installs by
+registry id, not from a local file. Until then the CLI is the only path that is
+actually exercised, and Open VSX is a copy nobody updates.
+
+**Whichever way this is resolved, record it here.** Nothing in this repository
+recorded that a public copy existed, which is how it stayed at 0.1.0.

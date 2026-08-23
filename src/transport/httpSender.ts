@@ -5,42 +5,42 @@ const MAX_CONCURRENT = 3;
 const REQUEST_TIMEOUT_MS = 10_000;
 
 export class HttpSender {
-  private inFlight = 0;
-
   constructor(private readonly config: PromptsterConfig) {}
 
   /**
-   * Send a batch of events sequentially with concurrency limit.
-   * Returns the number of successfully sent events.
+   * Send a batch of events, up to MAX_CONCURRENT at a time.
+   *
+   * Returns THE EVENTS THAT FAILED — not a count of the ones that did not.
+   *
+   * Sends complete out of order, so a success count says nothing about WHICH
+   * events landed. The caller requeues whatever comes back from here; given a
+   * count it could only requeue an arbitrary suffix, which both re-sends events
+   * already delivered and drops the ones that actually needed retrying. The
+   * re-send half is not harmless: `raw_events` is idempotent on the event id,
+   * but `timeline_events` inserts with a fresh id and has no unique constraint
+   * on the source event, so a duplicate POST writes a second row and the
+   * replay's attention counts and dwell totals come out wrong.
    */
-  async sendBatch(events: PromptsterEvent[]): Promise<number> {
-    let sent = 0;
+  async sendBatch(events: PromptsterEvent[]): Promise<PromptsterEvent[]> {
     const queue = [...events];
+    const failed: PromptsterEvent[] = [];
 
-    while (queue.length > 0) {
-      // Wait if at concurrency limit
-      while (this.inFlight >= MAX_CONCURRENT) {
-        await sleep(50);
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const event = queue.shift();
+        if (!event) return;
+        if (!(await this.sendOne(event))) failed.push(event);
       }
+    };
 
-      const event = queue.shift()!;
-      this.inFlight++;
+    await Promise.all(
+      Array.from({ length: Math.min(MAX_CONCURRENT, events.length) }, () => worker()),
+    );
 
-      this.sendOne(event)
-        .then((ok) => {
-          if (ok) sent++;
-        })
-        .finally(() => {
-          this.inFlight--;
-        });
+    if (failed.length > 0) {
+      log(`Sent ${events.length - failed.length}/${events.length} events`);
     }
-
-    // Wait for all in-flight to complete
-    while (this.inFlight > 0) {
-      await sleep(50);
-    }
-
-    return sent;
+    return failed;
   }
 
   private async sendOne(event: PromptsterEvent): Promise<boolean> {
@@ -77,8 +77,4 @@ export class HttpSender {
       return false;
     }
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }
