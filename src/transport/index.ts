@@ -55,14 +55,14 @@ export class TransportLayer {
 
       log(`Flushing ${allEvents.length} events (${offlineEvents.length} from offline queue)`);
 
-      const sent = await this.sender.sendBatch(allEvents);
-      const failed = allEvents.length - sent;
+      // Requeue exactly the events that failed. sendBatch returns them for
+      // that reason — see the note there on why a success count cannot
+      // identify them once sends complete out of order.
+      const failedEvents = await this.sender.sendBatch(allEvents);
 
-      if (failed > 0) {
-        // Put failed events into offline queue for retry
-        const failedEvents = allEvents.slice(sent);
+      if (failedEvents.length > 0) {
         await this.offlineQueue.enqueue(failedEvents);
-        logError(`${failed} events moved to offline queue`);
+        logError(`${failedEvents.length} events moved to offline queue`);
       }
     } catch (err) {
       logError('Flush failed', err);

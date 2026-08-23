@@ -60,8 +60,14 @@ function writeSessionFile(root: string, patch: Record<string, unknown> = {}): vo
       apiUrl: 'https://api.assessment.example/',
       consentAccepted: true,
       consentToIntegrity: false,
-      startedAt: '2026-08-21T10:00:00Z',
-      expiresAt: '2026-08-22T10:00:00Z',
+      // RELATIVE TO NOW, never a literal. A hard-coded expiry makes the whole
+      // suite a time bomb: once the date passes, `isExpired` correctly refuses
+      // the session, every "did it capture?" assertion collapses to zero, and
+      // nine tests fail for a reason that has nothing to do with the code under
+      // test. That is exactly what happened on 2026-08-22. Tests that DO care
+      // about expiry pass their own literal through `patch`.
+      startedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       ...patch,
     }),
     'utf-8',

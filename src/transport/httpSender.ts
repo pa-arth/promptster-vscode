@@ -5,42 +5,68 @@ const MAX_CONCURRENT = 3;
 const REQUEST_TIMEOUT_MS = 10_000;
 
 export class HttpSender {
-  private inFlight = 0;
+  /**
+   * Requests in flight, counted on the INSTANCE and not per call.
+   *
+   * The cap exists because `/v1/hooks/ingest` is 100 req/min per API key and
+   * this sender uses one request per event, sharing that bucket with the CLI's
+   * hook binary on the same candidate key. A cap that reset per invocation
+   * would be no cap at all the moment a second caller appears — and the fix
+   * this class exists to carry is about not losing events to that bucket.
+   */
+  private active = 0;
+  private readonly waiting: (() => void)[] = [];
 
   constructor(private readonly config: PromptsterConfig) {}
 
+  private async acquire(): Promise<void> {
+    if (this.active >= MAX_CONCURRENT) {
+      await new Promise<void>((resolve) => this.waiting.push(resolve));
+    }
+    this.active++;
+  }
+
+  private release(): void {
+    this.active--;
+    this.waiting.shift()?.();
+  }
+
   /**
-   * Send a batch of events sequentially with concurrency limit.
-   * Returns the number of successfully sent events.
+   * Send a batch of events, at most MAX_CONCURRENT in flight across the sender.
+   *
+   * Returns THE EVENTS THAT FAILED — not a count of the ones that did not.
+   *
+   * Sends complete out of order, so a success count says nothing about WHICH
+   * events landed. The caller requeues whatever comes back from here; given a
+   * count it could only requeue an arbitrary suffix, which both re-sends events
+   * already delivered and drops the ones that actually needed retrying. The
+   * re-send half is not harmless: `raw_events` is idempotent on the event id,
+   * but `timeline_events` inserts with a fresh id and has no unique constraint
+   * on the source event, so a duplicate POST writes a second row and the
+   * replay's attention counts and dwell totals come out wrong.
+   *
+   * Failures come back in the order they were given, so a retry preserves the
+   * order the candidate produced them in.
    */
-  async sendBatch(events: PromptsterEvent[]): Promise<number> {
-    let sent = 0;
-    const queue = [...events];
+  async sendBatch(events: PromptsterEvent[]): Promise<PromptsterEvent[]> {
+    const failed: (PromptsterEvent | undefined)[] = new Array(events.length);
 
-    while (queue.length > 0) {
-      // Wait if at concurrency limit
-      while (this.inFlight >= MAX_CONCURRENT) {
-        await sleep(50);
-      }
+    await Promise.all(
+      events.map(async (event, i) => {
+        await this.acquire();
+        try {
+          if (!(await this.sendOne(event))) failed[i] = event;
+        } finally {
+          this.release();
+        }
+      }),
+    );
 
-      const event = queue.shift()!;
-      this.inFlight++;
-
-      this.sendOne(event)
-        .then((ok) => {
-          if (ok) sent++;
-        })
-        .finally(() => {
-          this.inFlight--;
-        });
+    const out = failed.filter((e): e is PromptsterEvent => e !== undefined);
+    if (out.length > 0) {
+      log(`Sent ${events.length - out.length}/${events.length} events`);
     }
-
-    // Wait for all in-flight to complete
-    while (this.inFlight > 0) {
-      await sleep(50);
-    }
-
-    return sent;
+    return out;
   }
 
   private async sendOne(event: PromptsterEvent): Promise<boolean> {
@@ -77,8 +103,4 @@ export class HttpSender {
       return false;
     }
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }
