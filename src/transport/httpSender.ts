@@ -5,10 +5,34 @@ const MAX_CONCURRENT = 3;
 const REQUEST_TIMEOUT_MS = 10_000;
 
 export class HttpSender {
+  /**
+   * Requests in flight, counted on the INSTANCE and not per call.
+   *
+   * The cap exists because `/v1/hooks/ingest` is 100 req/min per API key and
+   * this sender uses one request per event, sharing that bucket with the CLI's
+   * hook binary on the same candidate key. A cap that reset per invocation
+   * would be no cap at all the moment a second caller appears — and the fix
+   * this class exists to carry is about not losing events to that bucket.
+   */
+  private active = 0;
+  private readonly waiting: (() => void)[] = [];
+
   constructor(private readonly config: PromptsterConfig) {}
 
+  private async acquire(): Promise<void> {
+    if (this.active >= MAX_CONCURRENT) {
+      await new Promise<void>((resolve) => this.waiting.push(resolve));
+    }
+    this.active++;
+  }
+
+  private release(): void {
+    this.active--;
+    this.waiting.shift()?.();
+  }
+
   /**
-   * Send a batch of events, up to MAX_CONCURRENT at a time.
+   * Send a batch of events, at most MAX_CONCURRENT in flight across the sender.
    *
    * Returns THE EVENTS THAT FAILED — not a count of the ones that did not.
    *
@@ -20,27 +44,29 @@ export class HttpSender {
    * but `timeline_events` inserts with a fresh id and has no unique constraint
    * on the source event, so a duplicate POST writes a second row and the
    * replay's attention counts and dwell totals come out wrong.
+   *
+   * Failures come back in the order they were given, so a retry preserves the
+   * order the candidate produced them in.
    */
   async sendBatch(events: PromptsterEvent[]): Promise<PromptsterEvent[]> {
-    const queue = [...events];
-    const failed: PromptsterEvent[] = [];
-
-    const worker = async (): Promise<void> => {
-      for (;;) {
-        const event = queue.shift();
-        if (!event) return;
-        if (!(await this.sendOne(event))) failed.push(event);
-      }
-    };
+    const failed: (PromptsterEvent | undefined)[] = new Array(events.length);
 
     await Promise.all(
-      Array.from({ length: Math.min(MAX_CONCURRENT, events.length) }, () => worker()),
+      events.map(async (event, i) => {
+        await this.acquire();
+        try {
+          if (!(await this.sendOne(event))) failed[i] = event;
+        } finally {
+          this.release();
+        }
+      }),
     );
 
-    if (failed.length > 0) {
-      log(`Sent ${events.length - failed.length}/${events.length} events`);
+    const out = failed.filter((e): e is PromptsterEvent => e !== undefined);
+    if (out.length > 0) {
+      log(`Sent ${events.length - out.length}/${events.length} events`);
     }
-    return failed;
+    return out;
   }
 
   private async sendOne(event: PromptsterEvent): Promise<boolean> {

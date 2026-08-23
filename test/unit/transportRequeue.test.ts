@@ -107,6 +107,42 @@ describe('HttpSender.sendBatch', () => {
 
     expect(failed.map((e) => e.id)).toEqual(['e2']);
   });
+
+  it('returns failures in the order they were given, not completion order', async () => {
+    stubFetchFailing(['e1', 'e3']);
+    const sender = new HttpSender(config);
+
+    const failed = await sender.sendBatch(['e1', 'e2', 'e3', 'e4'].map(makeEvent));
+
+    expect(failed.map((e) => e.id)).toEqual(['e1', 'e3']);
+  });
+
+  it('holds MAX_CONCURRENT across concurrent callers, not per call', async () => {
+    // The cap is why this class exists in its current shape: ingest is 100
+    // req/min per API key and this sender spends one request per event. A cap
+    // that reset per invocation would stop being a cap the moment a second
+    // caller appeared.
+    let inFlight = 0;
+    let peak = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight -= 1;
+        return { ok: true, status: 200 } as Response;
+      }),
+    );
+
+    const sender = new HttpSender(config);
+    await Promise.all([
+      sender.sendBatch(['a1', 'a2', 'a3', 'a4', 'a5'].map(makeEvent)),
+      sender.sendBatch(['b1', 'b2', 'b3', 'b4', 'b5'].map(makeEvent)),
+    ]);
+
+    expect(peak).toBeLessThanOrEqual(3);
+  });
 });
 
 describe('TransportLayer flush', () => {
