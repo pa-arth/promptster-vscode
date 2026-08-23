@@ -7,7 +7,15 @@ node_modules/**
 tsconfig.json
 vitest.config.ts
 **/*.map
+
+# Repository machinery, not extension payload. `.github/workflows/` was being
+# shipped inside the .vsix to every candidate's editor; the rest is build-time
+# only. readme.md and changelog.md stay — a registry listing renders them.
+.github/**
 scripts/**
 dist-vsix/**
-**/*.d.ts
-.promptsterignore.default
+pnpm-lock.yaml
+RELEASING.md
+
+# Declaration files are a build artifact — nothing in a .vsix consumes them.
+dist/**/*.d.ts
