@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.3.1
+
+Delivery correctness in the transport, and the first CI this repository has had.
+
+### Failed events are requeued; delivered ones are not re-sent
+- `flush()` requeued `allEvents.slice(sent)` after `sendBatch` returned a COUNT
+  of successes. Sends run three at a time and complete out of order, so that
+  count cannot say which events landed: with one failure in a batch of four, the
+  old code requeued an event already delivered and dropped the one that failed.
+- The re-send half was not harmless. `raw_events` is idempotent on the event id,
+  but `timeline_events` inserts with a fresh id and has no unique constraint on
+  the source event, so a duplicate POST wrote a second row — and the replay's
+  attention counts and dwell totals came out wrong.
+- `sendBatch` now returns the failed events themselves, in the order they were
+  given, so a retry preserves the order the candidate produced them in.
+- The concurrency cap is held on the sender rather than per call. It exists
+  because ingest is 100 req/min per API key and this sender spends one request
+  per event, sharing that bucket with the CLI's hook binary.
+
+### The test suite was red, and nothing said so
+- `sessionLifecycle.test.ts` hard-coded `expiresAt: '2026-08-22T10:00:00Z'`.
+  Once that date passed, `isExpired` correctly refused the session and every
+  "did it capture?" assertion collapsed to zero — nine failures, none of them
+  about the code under test. The default fixture is now relative to now.
+- Added CI: typecheck and the full suite on push, pull request, and nightly.
+  There were no workflows at all before this. The nightly run is what turns "a
+  fixture rots on a date" into a message rather than a surprise.
+
+### Documented
+- `RELEASING.md` now records that `Promptster.promptster@0.1.0` is still live on
+  Open VSX, what that build does that the candidate promise disclaims, and the
+  two routes to resolving it.
+
 ## 0.3.0
 
 Editor attention capture — the extension is wired to the session, honours what it
