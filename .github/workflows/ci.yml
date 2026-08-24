@@ -20,8 +20,8 @@ jobs:
       - uses: actions/checkout@v6
 
       - uses: pnpm/action-setup@v6
-        with:
-          version: 10.4.1
+        # No `version:` here — it is pinned by package.json `packageManager`,
+        # and action-setup errors when both are set. One source, not two.
 
       - uses: actions/setup-node@v6
         with:

@@ -13,6 +13,7 @@
   "engines": {
     "vscode": "^1.85.0"
   },
+  "packageManager": "pnpm@10.4.1",
   "categories": [
     "Other"
   ],
@@ -55,6 +56,7 @@
     ]
   },
   "scripts": {
+    "preinstall": "node scripts/only-pnpm.mjs",
     "vscode:prepublish": "pnpm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
