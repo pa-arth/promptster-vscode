@@ -3,3 +3,10 @@ dist/
 *.vsix
 .vscode-test/
 dist-vsix/
+
+# enforce pnpm — see the package.json preinstall guard
+package-lock.json
+yarn.lock
+
+# agent worktrees / local session state
+/.claude/
