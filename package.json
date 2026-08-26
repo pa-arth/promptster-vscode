@@ -60,7 +60,6 @@
     "vscode:prepublish": "pnpm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "lint": "eslint src",
     "test": "vitest run",
     "test:watch": "vitest",
     "package": "vsce package --no-dependencies",

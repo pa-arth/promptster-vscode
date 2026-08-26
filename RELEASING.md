@@ -53,7 +53,7 @@ The tag message carries the sha256. Given a tag, anyone can check out that
 commit, rebuild, and confirm the artifact a candidate's editor was asked to
 install is the one the tag names.
 
-## The public registry copy, and why it is a liability
+## The public registry copy — resolved for `latest`, still open for `0.1.0`
 
 **The distribution path is the CLI, not a marketplace.** `promptster start`
 sideloads the embedded `.vsix` with `--install-extension … --force` on every
@@ -65,33 +65,55 @@ That is the intended path, but it is not the only copy that exists:
 | registry | what it serves | checked |
 |---|---|---|
 | VS Code Marketplace | **nothing** — `Promptster.promptster` is not published | 2026-08-23 |
-| Open VSX (Cursor's registry) | **`Promptster.promptster@0.1.0`** | 2026-08-23 |
+| Open VSX (Cursor's registry) | **`latest` → `0.3.2`**; `0.3.1` and `0.1.0` still resolve by pin | 2026-08-26 |
 
-`0.1.0` predates this document and the privacy work. Unpacked and checked on
-2026-08-23, that published build:
+### What was done, 2026-08-26
 
-- emits window **focus/blur** from `dist/collectors/focus.js` — which the
-  candidate promise disclaims by name, and which `editor-attention-capture`
-  finding P-1 is the reason 0.3.0 does not emit;
-- carries **no command redactor** in `dist/collectors/terminal.js`.
+`0.3.2` published with the pinned devDependency rather than `pnpm dlx`:
 
-So a build under our publisher name, installable by anyone today, does a thing
-we publicly say we do not do. Two ways out, and they are not equivalent:
+```sh
+pnpm install --frozen-lockfile
+pnpm exec ovsx publish <path>/promptster-0.3.2.vsix -p "$OVSX_PAT" < /dev/null
+```
 
-1. **Request removal** of the version from Open VSX. Publishers cannot delete a
-   published version themselves; it goes through the registry's admins.
-2. **Publish the current version over it** so `latest` resolves to a build that
-   honours the promise:
-   ```sh
-   pnpm run release                       # builds dist-vsix/promptster-<version>.vsix
-   pnpm dlx ovsx publish dist-vsix/promptster-<version>.vsix -p "$OVSX_PAT"
-   ```
-   This does **not** retract 0.1.0 — a pinned install of it still resolves.
+Three things learned doing it, all of which cost time:
 
-Publishing to a registry at all becomes mandatory the moment a hosted lane
-ships: `devcontainer.json`'s `customizations.vscode.extensions` installs by
-registry id, not from a local file. Until then the CLI is the only path that is
-actually exercised, and Open VSX is a copy nobody updates.
+- **`ovsx publish` prints `Published` before the version exists.** The version
+  endpoint 404'd for roughly **100 seconds** afterwards while the registry
+  indexed. Do not read the CLI's success line as the observation; poll
+  `https://open-vsx.org/api/Promptster/promptster/<version>` until it is 200.
+- **The published bytes are ours, byte-for-byte.** Downloaded back and compared:
+  `sha256 94bb2036…` matches `v0.3.2`'s tag message AND the artifact embedded in
+  `promptster-cli`. The registry does not repackage, so the reproducibility
+  chain holds all the way to what a registry install pulls.
+- **`ovsx` writes the PAT clear-text to `~/.ovsx`** when it cannot open the OS
+  credential store, and says so in one line that is easy to miss. Delete it
+  after publishing. Passing the token via a shell variable assigned on the same
+  line does NOT work — the variable is expanded before the assignment takes
+  effect and `ovsx` falls through to an interactive prompt.
+
+### What is still open
+
+**`0.1.0` remains installable by pin**, and re-verified against the live
+registry on **2026-08-26** — not carried over from the earlier note — that build:
+
+- hooks `onDidChangeWindowState` and emits `editor_focus` from
+  `dist/collectors/focus.js` — which the candidate promise disclaims by name,
+  and which `editor-attention-capture` finding P-1 is the reason 0.3.0 does not
+  emit;
+- carries **no command redactor**: `dist/utils/` holds only `editorDetector`,
+  `logger` and `pathSanitizer`, and `dist/collectors/terminal.js` contains zero
+  occurrences of `redact`.
+
+Publishing over it did not retract it and could not. **Removal goes through the
+registry's admins** — publishers cannot delete a published version themselves.
+That request has not been made; make it, and record the outcome here.
+
+Note what publishing DID buy: anyone resolving `latest` — which is what a
+`devcontainer.json` `customizations.vscode.extensions` entry does — now gets a
+build that honours the promise. That matters because registry installation
+becomes mandatory the moment a hosted lane ships, since it installs by registry
+id and not from a local file.
 
 **Whichever way this is resolved, record it here.** Nothing in this repository
 recorded that a public copy existed, which is how it stayed at 0.1.0.
