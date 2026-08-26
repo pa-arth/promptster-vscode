@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.2
+
+Packaging and contributor tooling. **No change to what the extension collects or
+emits** — the `dist/` payload is byte-identical to 0.3.1's.
+
+### The .vsix stops carrying repository machinery
+The 0.3.1 artifact shipped `.github/workflows/ci.yml`, `RELEASING.md` and
+`pnpm-lock.yaml` inside the extension installed into every candidate's editor.
+None of it is payload; our CI workflow in particular had no business sitting on
+someone else's machine. `.github/`, `scripts/`, `dist-vsix/`, the lockfile and
+RELEASING.md are now excluded, along with the emitted `.d.ts` declarations that
+nothing in a `.vsix` consumes. `README.md` and `CHANGELOG.md` stay — a registry
+listing renders them. Verified with `vsce ls`: 33 entries, and the only
+non-`dist/` files left are `package.json`, `README.md`, `CHANGELOG.md`,
+`.promptsterignore.default` and `assets/icon.png`.
+
+### pnpm is pinned where a contributor reads it
+`packageManager: pnpm@10.4.1` in `package.json` — the version CI already used,
+so the build is unchanged. Nothing previously told a package manager this repo
+was pnpm-only: `npm install` would have succeeded and written an untracked
+`package-lock.json`, a second and untested dependency set. A local preinstall
+guard rejects npm and yarn, rather than `npx --yes only-allow`, which runs
+unpinned registry code with installer privileges on every install.
+
 ## 0.3.1
 
 Delivery correctness in the transport, and the first CI this repository has had.
