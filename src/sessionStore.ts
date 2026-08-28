@@ -13,6 +13,7 @@ export interface SessionCaptureState {
   sessionStartEmitted: boolean;
   openedFiles: string[];
   paused: boolean;
+  agentLaunched: boolean;
 }
 
 const PREFIX = 'promptster.capture.';
@@ -21,6 +22,7 @@ const EMPTY: SessionCaptureState = {
   sessionStartEmitted: false,
   openedFiles: [],
   paused: false,
+  agentLaunched: false,
 };
 
 export class SessionStore {
@@ -37,6 +39,7 @@ export class SessionStore {
       sessionStartEmitted: stored.sessionStartEmitted === true,
       openedFiles: Array.isArray(stored.openedFiles) ? stored.openedFiles : [],
       paused: stored.paused === true,
+      agentLaunched: stored.agentLaunched === true,
     };
   }
 

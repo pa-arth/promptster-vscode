@@ -150,6 +150,34 @@ describe('session lifecycle', () => {
 
   // --- 1.1 ---------------------------------------------------------------
   describe('1.1 — the session supplies the API URL', () => {
+    it('opens the hosted terminal and launches the recruiter-selected agent once', async () => {
+      writeSessionFile(root, { noSelfEvict: true, tools: ['codex'] });
+      const first = await loadExtension();
+      await activateExtension(first);
+
+      expect(state.terminals).toEqual([
+        { name: 'Promptster Assessment', shown: true, commands: ['promptster codex'] },
+      ]);
+
+      const second = await reloadExtension(first);
+      await activateExtension(second);
+      expect(state.terminals).toHaveLength(1);
+    });
+
+    it('does not open an agent terminal for local sessions', async () => {
+      writeSessionFile(root, { tools: ['claude'] });
+      const ext = await loadExtension();
+      await activateExtension(ext);
+      expect(state.terminals).toEqual([]);
+    });
+
+    it('prefers Claude when the recruiter allows both agents', async () => {
+      writeSessionFile(root, { noSelfEvict: true, tools: ['claude', 'codex'] });
+      const ext = await loadExtension();
+      await activateExtension(ext);
+      expect(state.terminals[0]?.commands).toEqual(['claude']);
+    });
+
     it('reads .promptster/session.json, which is the file the CLI writes', async () => {
       writeSessionFile(root);
       const ext = await loadExtension();

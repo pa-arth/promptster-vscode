@@ -92,6 +92,7 @@ export const state = singleton('__promptsterFakeState', () => ({
   /** fsPath -> diagnostics currently reported for it. */
   diagnostics: new Map<string, { severity: number; message: string }[]>(),
   logLines: [] as string[],
+  terminals: [] as Array<{ name: string; shown: boolean; commands: string[] }>,
 }));
 
 export function resetState(): void {
@@ -101,6 +102,7 @@ export function resetState(): void {
   state.activeEditor = undefined;
   state.diagnostics = new Map();
   state.logLines = [];
+  state.terminals = [];
 }
 
 export const DiagnosticSeverity = { Error: 0, Warning: 1, Information: 2, Hint: 3 };
@@ -124,6 +126,17 @@ export const window = {
     tooltip: '',
     command: undefined as unknown,
   }),
+  createTerminal: ({ name }: { name: string }) => {
+    const terminal = { name, shown: false, commands: [] as string[] };
+    state.terminals.push(terminal);
+    return {
+      show: () => {
+        terminal.shown = true;
+      },
+      sendText: (command: string) => terminal.commands.push(command),
+      dispose: () => {},
+    };
+  },
   showInformationMessage: async () => undefined,
   onDidChangeActiveTextEditor: emitters.activeTextEditor.event,
   onDidChangeWindowState: emitters.windowState.event,
