@@ -177,12 +177,35 @@ async function startCapture(
     }
 
     writeCaptureState(extensionVersion, { capturing: true, sessionId: session.sessionId });
+    await launchHostedAgent(session);
     log(`Capture started for session ${session.sessionId} (from ${session.sourceFile})`);
   } catch (err) {
     logError('Failed to start capture', err);
     running = undefined;
     statusBar.showError(err instanceof Error ? err.message : 'Unknown error');
   }
+}
+
+async function launchHostedAgent(session: PromptsterSession): Promise<void> {
+  if (!session.hosted || store.read(session.sessionId).agentLaunched) return;
+
+  const command = session.tools.includes('claude')
+    ? 'claude'
+    : session.tools.includes('codex')
+      ? 'promptster codex'
+      : null;
+  if (!command) {
+    log('Hosted session has no supported agent to launch');
+    return;
+  }
+
+  // Persist before launching so an extension-host reload cannot create a
+  // second interactive agent beside the first one.
+  await store.update(session.sessionId, { agentLaunched: true });
+  const terminal = vscode.window.createTerminal({ name: 'Promptster Assessment' });
+  terminal.show(false);
+  terminal.sendText(command, true);
+  log(`Opened the hosted assessment terminal with ${command}`);
 }
 
 async function stopCapture(): Promise<void> {

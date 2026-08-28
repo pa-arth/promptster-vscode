@@ -116,6 +116,10 @@ export interface PromptsterSession extends PromptsterConfig {
   consentToIntegrity: boolean;
   /** Candidate-key expiry. Capture stops once it passes. */
   expiresAt?: string;
+  /** Tools selected by the hiring team for this assessment. */
+  tools: Array<'claude' | 'codex'>;
+  /** Seeded sessions run in a Promptster-owned hosted box. */
+  hosted: boolean;
   /** Which file the session state was read from, for diagnostics. */
   sourceFile: string;
 }

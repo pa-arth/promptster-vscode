@@ -58,6 +58,11 @@ function str(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
+function tools(value: unknown): Array<'claude' | 'codex'> {
+  if (!Array.isArray(value)) return [];
+  return value.filter((tool): tool is 'claude' | 'codex' => tool === 'claude' || tool === 'codex');
+}
+
 /**
  * Map a session file onto the shape the extension needs.
  *
@@ -85,6 +90,8 @@ export function fromJson(
     consentAccepted: raw.consentAccepted === true,
     consentToIntegrity: raw.consentToIntegrity === true,
     expiresAt: str(raw.expiresAt),
+    tools: tools(raw.tools),
+    hosted: raw.noSelfEvict === true,
     sourceFile,
   };
 }
