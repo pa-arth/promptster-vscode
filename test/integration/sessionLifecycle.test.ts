@@ -151,7 +151,10 @@ describe('session lifecycle', () => {
   // --- 1.1 ---------------------------------------------------------------
   describe('1.1 — the session supplies the API URL', () => {
     it('opens the hosted terminal and launches the recruiter-selected agent once', async () => {
-      writeSessionFile(root, { noSelfEvict: true, tools: ['codex'] });
+      // Hosted ARM carries only sessionToken. A legacy duplicate `key` in this
+      // fixture previously hid the production parser mismatch and prevented
+      // reconcile() from ever reaching the existing auto-launch path.
+      writeSessionFile(root, { key: undefined, noSelfEvict: true, tools: ['codex'] });
       const first = await loadExtension();
       await activateExtension(first);
 
@@ -188,7 +191,7 @@ describe('session lifecycle', () => {
       expect(posted.length).toBeGreaterThan(0);
       for (const req of posted) {
         expect(req.url).toBe('https://api.assessment.example/v1/hooks/ingest');
-        expect(req.headers['X-API-Key']).toBe('PST-candidate-key');
+        expect(req.headers['X-API-Key']).toBe('tok');
         expect(req.event.sessionId).toBe('sess_abc123');
       }
     });
