@@ -247,6 +247,10 @@ export const commands = singleton('__promptsterFakeCommands', () => {
       if (!handler) throw new Error(`no such command: ${id}`);
       return handler();
     },
+    async executeCommand(id: string): Promise<unknown> {
+      const handler = registered.get(id);
+      return handler?.();
+    },
   };
 });
 

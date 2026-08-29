@@ -155,15 +155,19 @@ describe('session lifecycle', () => {
       // fixture previously hid the production parser mismatch and prevented
       // reconcile() from ever reaching the existing auto-launch path.
       writeSessionFile(root, { key: undefined, noSelfEvict: true, tools: ['codex'] });
+      const closeAgentSidebar = vi.fn();
+      commands.registered.set('workbench.action.closeSecondarySideBar', closeAgentSidebar);
       const first = await loadExtension();
       await activateExtension(first);
 
+      expect(closeAgentSidebar).toHaveBeenCalledOnce();
       expect(state.terminals).toEqual([
         { name: 'Promptster Assessment', shown: true, commands: ['promptster codex'] },
       ]);
 
       const second = await reloadExtension(first);
       await activateExtension(second);
+      expect(closeAgentSidebar).toHaveBeenCalledOnce();
       expect(state.terminals).toHaveLength(1);
     });
 

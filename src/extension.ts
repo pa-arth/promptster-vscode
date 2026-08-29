@@ -202,6 +202,11 @@ async function launchHostedAgent(session: PromptsterSession): Promise<void> {
   // Persist before launching so an extension-host reload cannot create a
   // second interactive agent beside the first one.
   await store.update(session.sessionId, { agentLaunched: true });
+  // code-server currently opens its generic Copilot/Agent secondary sidebar by
+  // default. It is unrelated to the recruiter-selected, Promptster-authenticated
+  // agent below and makes the candidate choose between two apparently competing
+  // entry points. Close it before focusing the assessment terminal.
+  await vscode.commands.executeCommand('workbench.action.closeSecondarySideBar');
   const terminal = vscode.window.createTerminal({ name: 'Promptster Assessment' });
   terminal.show(false);
   terminal.sendText(command, true);
