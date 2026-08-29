@@ -76,7 +76,11 @@ export function fromJson(
   sourceFile: string,
 ): PromptsterSession | null {
   const apiUrl = str(raw.apiUrl) ?? str(raw.api_url);
-  const apiKey = str(raw.key) ?? str(raw.apiKey) ?? str(raw.api_key);
+  // Hosted ARM writes the redeemed candidate credential as `sessionToken`.
+  // Keep the older names for CLI/backward compatibility, but do not require a
+  // duplicate `key` field merely so the editor can recognize the same session.
+  const apiKey =
+    str(raw.sessionToken) ?? str(raw.key) ?? str(raw.apiKey) ?? str(raw.api_key);
   const sessionId = str(raw.sessionId) ?? str(raw.session_id);
 
   if (!apiUrl || !apiKey || !sessionId) return null;
