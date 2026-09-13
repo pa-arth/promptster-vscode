@@ -56,6 +56,40 @@ describe('ticket-flow visibility', () => {
   });
 });
 
+describe('session thread boundary', () => {
+  it('ignores an old session thread response after a session switch', async () => {
+    let current = session;
+    vi.spyOn(config, 'readSession').mockImplementation(() => current);
+    const posted: Array<{ type: string; sessionId: string; messages?: unknown[] }> = [];
+    let resolveOld!: (response: Response) => void;
+    const oldThread = new Promise<Response>(resolve => { resolveOld = resolve; });
+    const persona = { id: 'priya', name: 'Priya Raman', role: 'Architect', owns: 'Prior art', avatar: null };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const path = String(url);
+      if (path.endsWith('/messages') && path.includes('session%201')) return oldThread;
+      if (path.endsWith('/messages')) return { ok: true, json: async () => ({ threadId: 'priya', messages: [{ ...away, text: 'New session answer' }] }) } as Response;
+      return { ok: true, json: async () => ({ personas: [persona] }) } as Response;
+    });
+    const view = new TeammatesView({ subscriptions: [] } as never);
+    view.resolveWebviewView({ webview: {
+      cspSource: 'vscode-resource:', options: {}, html: '',
+      onDidReceiveMessage: () => ({ dispose() {} }),
+      postMessage: (message: { type: string; sessionId: string; messages?: unknown[] }) => { posted.push(message); return Promise.resolve(true); },
+    } } as never);
+    for (let i = 0; i < 10 && !posted.some(message => message.type === 'selected'); i++) await Promise.resolve();
+    current = { ...session, sessionId: 'session-2' };
+    await view.refresh();
+    resolveOld({ ok: true, json: async () => ({ threadId: 'priya', messages: [{ ...away, text: 'Old session answer' }] }) } as Response);
+    await Promise.resolve();
+    await Promise.resolve();
+    const threads = posted.filter(message => message.type === 'thread');
+    expect(threads).toHaveLength(1);
+    expect(threads[0].sessionId).toBe('session-2');
+    expect(threads[0].messages).toEqual([{ ...away, text: 'New session answer' }]);
+    expect(posted.filter(message => message.type === 'reset').map(message => message.sessionId)).toEqual(['session 1', 'session-2']);
+  });
+});
+
 describe('thread isolation', () => {
   it('contributes no command or language-model tool that returns thread contents', () => {
     const manifest = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
