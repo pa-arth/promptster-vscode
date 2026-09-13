@@ -53,7 +53,25 @@
         "command": "promptster.showStatus",
         "title": "Promptster: Show Status"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "promptster",
+          "title": "Promptster",
+          "icon": "assets/icon.png"
+        }
+      ]
+    },
+    "views": {
+      "promptster": [
+        {
+          "id": "promptster.teammates",
+          "name": "Teammates",
+          "when": "promptster.ticketFlow"
+        }
+      ]
+    }
   },
   "scripts": {
     "preinstall": "node scripts/only-pnpm.mjs",
