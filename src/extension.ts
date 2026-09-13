@@ -1,3 +1,4 @@
+import { TeammatesView } from './ui/teammates';
 import * as vscode from 'vscode';
 import { readSession, watchSession } from './config';
 import { captureDecision, reasonText } from './consent';
@@ -23,6 +24,7 @@ let collectors: CollectorRegistry | undefined;
 /** The session capture is currently running for, if any. */
 let running: PromptsterSession | undefined;
 /** Version of the running extension, read from the manifest at activation. */
+let teammates: TeammatesView;
 let extensionVersion = 'unknown';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -32,6 +34,10 @@ export function activate(context: vscode.ExtensionContext): void {
   store = new SessionStore(context.globalState);
   extensionVersion = context.extension?.packageJSON?.version ?? 'unknown';
   context.subscriptions.push(statusBar);
+
+  teammates = new TeammatesView(context);
+  context.subscriptions.push(vscode.window.registerWebviewViewProvider('promptster.teammates', teammates));
+  void teammates.refresh();
 
   registerCommands(context, {
     onPause: async () => {
@@ -75,6 +81,7 @@ export function activate(context: vscode.ExtensionContext): void {
  * a duplicate does not add noise, it manufactures attention that did not occur.
  */
 async function reconcile(context: vscode.ExtensionContext): Promise<void> {
+  void teammates.refresh();
   const session = readSession();
   const paused = session ? store.read(session.sessionId).paused : false;
   const decision = captureDecision(session, paused);

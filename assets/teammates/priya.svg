@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Priya Raman">
+  <rect width="96" height="96" rx="20" fill="#E8E1F3"/>
+  <circle cx="48" cy="21" r="9" fill="#1E1A1A"/>
+  <path d="M30 42c0-13 8-22 18-22s18 9 18 22v12H30z" fill="#1E1A1A"/>
+  <path d="M14 96c2-14 12-22 24-24h20c12 2 22 10 24 24z" fill="#B65C2B"/>
+  <rect x="41" y="56" width="14" height="17" rx="5" fill="#A5673F"/>
+  <ellipse cx="48" cy="44" rx="16" ry="19" fill="#B97A50"/>
+  <path d="M32 41c0-12 7-19 16-19s16 7 16 19c-2-8-8-12-16-12s-14 4-16 12z" fill="#1E1A1A"/>
+  <path d="M39 39c2-2 6-2 8 0M49 39c2-2 6-2 8 0" stroke="#1E1A1A" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+  <circle cx="42.5" cy="45" r="1.8" fill="#1E1A1A"/>
+  <circle cx="53.5" cy="45" r="1.8" fill="#1E1A1A"/>
+  <circle cx="42.5" cy="45" r="5.5" stroke="#2B2B33" stroke-width="1.5" fill="none"/>
+  <circle cx="53.5" cy="45" r="5.5" stroke="#2B2B33" stroke-width="1.5" fill="none"/>
+  <line x1="48" y1="44.6" x2="48" y2="44.6" stroke="#2B2B33" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M36.8 43.8l-3.3-1.2M59.2 43.8l3.3-1.2" stroke="#2B2B33" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M48 46v6c0 1-1 2-2 2" stroke="#8E5233" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+  <path d="M43 56c3 3 7 3 10 0" stroke="#7E3A2E" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+</svg>

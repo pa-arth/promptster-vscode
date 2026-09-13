@@ -126,6 +126,7 @@ export const window = {
     tooltip: '',
     command: undefined as unknown,
   }),
+  registerWebviewViewProvider: () => ({ dispose: () => {} }),
   createTerminal: ({ name }: { name: string }) => {
     const terminal = { name, shown: false, commands: [] as string[] };
     state.terminals.push(terminal);
