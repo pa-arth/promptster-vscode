@@ -47,6 +47,7 @@ export class TeammatesView implements vscode.WebviewViewProvider {
   private selected?: string;
   private generation = 0;
   private busy = false;
+  private nonTicketFlowSessionId?: string;
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -62,9 +63,11 @@ export class TeammatesView implements vscode.WebviewViewProvider {
     const generation = ++this.generation;
     const session = readSession();
     if (!session) { this.personas = []; this.selected = undefined; await vscode.commands.executeCommand('setContext', 'promptster.ticketFlow', false); return; }
+    if (session.sessionId === this.nonTicketFlowSessionId) return;
     try {
       const { personas } = await new TeammatesApi(session).list();
       if (generation !== this.generation) return;
+      this.nonTicketFlowSessionId = undefined;
       this.personas = personas;
       this.selected = personas.some(p => p.id === this.selected) ? this.selected : personas[0]?.id;
       await vscode.commands.executeCommand('setContext', 'promptster.ticketFlow', true);
@@ -73,6 +76,7 @@ export class TeammatesView implements vscode.WebviewViewProvider {
     } catch (error) {
       if (generation !== this.generation) return;
       if (error instanceof TeammatesError && error.code === 'not_ticket_flow') {
+        this.nonTicketFlowSessionId = session.sessionId;
         this.personas = []; this.selected = undefined;
         await vscode.commands.executeCommand('setContext', 'promptster.ticketFlow', false);
       } else this.post({ type: 'error', text: errorText(error) });
@@ -112,6 +116,7 @@ export class TeammatesView implements vscode.WebviewViewProvider {
   }
 
   private avatarUrl(avatar: string | null): string | null {
+    // ponytail: every new problem avatar needs an extension release; upgrade to server-served avatar URLs.
     if (!this.view || !avatar || !['dana.svg', 'priya.svg'].includes(avatar)) return null;
     return this.view.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'teammates', avatar)).toString();
   }

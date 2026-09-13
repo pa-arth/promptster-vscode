@@ -1,4 +1,3 @@
-import { TeammatesView } from './ui/teammates';
 import * as vscode from 'vscode';
 import { readSession, watchSession } from './config';
 import { captureDecision, reasonText } from './consent';
@@ -10,6 +9,7 @@ import { SessionStore } from './sessionStore';
 import { writeCaptureState } from './captureState';
 import { StatusBarManager } from './ui/statusBar';
 import { registerCommands } from './ui/commands';
+import { TeammatesView } from './ui/teammates';
 import { loadIgnorePatterns } from './utils/pathSanitizer';
 import { log, logError } from './utils/logger';
 import type { PromptsterSession } from './types';
@@ -23,8 +23,8 @@ let transport: TransportLayer | undefined;
 let collectors: CollectorRegistry | undefined;
 /** The session capture is currently running for, if any. */
 let running: PromptsterSession | undefined;
-/** Version of the running extension, read from the manifest at activation. */
 let teammates: TeammatesView;
+/** Version of the running extension, read from the manifest at activation. */
 let extensionVersion = 'unknown';
 
 export function activate(context: vscode.ExtensionContext): void {

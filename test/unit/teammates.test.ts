@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import * as config from '../../src/config';
 import { fromJson } from '../../src/config';
 
 vi.mock('vscode', () => import('../fakes/vscode'));
-import { TeammatesApi } from '../../src/ui/teammates';
+import { TeammatesApi, TeammatesView } from '../../src/ui/teammates';
 
 const session = fromJson({ apiUrl: 'https://api.example.test/', sessionToken: 'PST-test', sessionId: 'session 1' }, '.promptster/session.json')!;
 const sent = { eventId: 'one', at: '2026-09-12T10:03:20Z', direction: 'to_persona', kind: 'message', text: 'Question' };
@@ -28,6 +29,30 @@ describe('Teammates API', () => {
     const result = await new TeammatesApi(session).messages('priya');
     expect(fetch).toHaveBeenCalledWith('https://api.example.test/v1/sessions/session%201/teammates/priya/messages', expect.objectContaining({ method: 'GET', headers: { 'X-API-Key': 'PST-test' } }));
     expect(result.messages).toEqual([sent, away]);
+  });
+});
+
+describe('ticket-flow visibility', () => {
+  it('remembers not_ticket_flow for a session, then probes a new session', async () => {
+    let current = session;
+    vi.spyOn(config, 'readSession').mockImplementation(() => current);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false, status: 404, json: async () => ({ error: 'not_ticket_flow' }) } as Response);
+    const view = new TeammatesView({ subscriptions: [] } as never);
+    await view.refresh();
+    await view.refresh();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    current = { ...session, sessionId: 'session-2' };
+    await view.refresh();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries other failures for the same session', async () => {
+    vi.spyOn(config, 'readSession').mockReturnValue(session);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false, status: 503, json: async () => ({ error: 'teammate_unavailable' }) } as Response);
+    const view = new TeammatesView({ subscriptions: [] } as never);
+    await view.refresh();
+    await view.refresh();
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });
 
