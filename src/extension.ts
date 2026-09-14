@@ -1,3 +1,4 @@
+import { TicketEditor } from './ui/ticket';
 import * as vscode from 'vscode';
 import { readSession, watchSession } from './config';
 import { captureDecision, reasonText } from './consent';
@@ -37,6 +38,7 @@ export function activate(context: vscode.ExtensionContext): void {
   extensionVersion = context.extension?.packageJSON?.version ?? 'unknown';
   context.subscriptions.push(statusBar);
 
+  context.subscriptions.push(vscode.window.registerCustomEditorProvider('promptster.ticket', new TicketEditor()));
   assessment = new AssessmentView(context);
   context.subscriptions.push(vscode.window.registerWebviewViewProvider('promptster.assessment', assessment));
   assessment.refresh();

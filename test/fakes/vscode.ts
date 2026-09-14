@@ -127,6 +127,7 @@ export const window = {
     command: undefined as unknown,
   }),
   registerWebviewViewProvider: () => ({ dispose: () => {} }),
+  registerCustomEditorProvider: () => ({ dispose: () => {} }),
   createTerminal: ({ name }: { name: string }) => {
     const terminal = { name, shown: false, commands: [] as string[] };
     state.terminals.push(terminal);
@@ -293,3 +294,11 @@ export function makeDocument(
     text,
   };
 }
+
+export const Uri = {
+  file: (fsPath: string) => ({ fsPath, toString: () => `file://${fsPath}` }),
+  joinPath: (base: { fsPath: string }, ...parts: string[]) => {
+    const fsPath = [base.fsPath, ...parts].join('/');
+    return { fsPath, toString: () => `file://${fsPath}` };
+  },
+};

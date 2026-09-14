@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { renderTicket } from './ticket';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { readSession, isExpired } from '../config';
@@ -58,8 +59,12 @@ export class AssessmentView implements vscode.WebviewViewProvider {
     const session = readSession();
     if (!root || !brief || !session?.consentAccepted || isExpired(session) || request.sessionId !== session.sessionId) return;
     try {
-      if (request.action === 'ticket' || request.action === 'handoff') {
-        const uri = vscode.Uri.file(join(root, request.action === 'ticket' ? 'TASK.md' : brief.specFile));
+      if (request.action === 'ticket') {
+        const path = join(root, 'TASK.html');
+        if (!existsSync(path)) writeFileSync(path, renderTicket(readFileSync(join(root, 'TASK.md'), 'utf8'), brief), { flag: 'wx' });
+        await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(path), 'promptster.ticket');
+      } else if (request.action === 'handoff') {
+        const uri = vscode.Uri.file(join(root, brief.specFile));
         await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri), { preview: false });
       } else if (request.action === 'tool') {
         const tool = request.tool;
