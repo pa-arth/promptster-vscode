@@ -239,6 +239,7 @@ export const commands = singleton('__promptsterFakeCommands', () => {
   const registered = new Map<string, (...args: unknown[]) => unknown>();
   return {
     registered,
+    async getCommands(): Promise<string[]> { return [...registered.keys()]; },
     registerCommand(id: string, handler: (...args: unknown[]) => unknown): FakeDisposable {
       registered.set(id, handler);
       return { dispose: () => registered.delete(id) };
