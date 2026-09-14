@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.6
+
+Add native assessment navigation for ticket-flow workspaces: ticket and handoff files, company-assigned Codex or Claude Code terminals, and saved submission through the existing CLI. Reuse the hosted session’s agent terminal. Gate actions on the current session, consent, and expiry; recheck consent after submission confirmation. Correct the Teammates view’s webview declaration.
+
+Validation: TypeScript compilation and 123 tests, including assigned-tool rejection, terminal reuse, and consent-change regressions.
+
 ## 0.3.2
 
 Packaging and contributor tooling. **No change to what the extension collects or

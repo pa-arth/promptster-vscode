@@ -10,6 +10,7 @@ import { writeCaptureState } from './captureState';
 import { StatusBarManager } from './ui/statusBar';
 import { registerCommands } from './ui/commands';
 import { TeammatesView } from './ui/teammates';
+import { AssessmentView } from './ui/assessment';
 import { loadIgnorePatterns } from './utils/pathSanitizer';
 import { log, logError } from './utils/logger';
 import type { PromptsterSession } from './types';
@@ -24,6 +25,7 @@ let collectors: CollectorRegistry | undefined;
 /** The session capture is currently running for, if any. */
 let running: PromptsterSession | undefined;
 let teammates: TeammatesView;
+let assessment: AssessmentView;
 /** Version of the running extension, read from the manifest at activation. */
 let extensionVersion = 'unknown';
 
@@ -34,6 +36,10 @@ export function activate(context: vscode.ExtensionContext): void {
   store = new SessionStore(context.globalState);
   extensionVersion = context.extension?.packageJSON?.version ?? 'unknown';
   context.subscriptions.push(statusBar);
+
+  assessment = new AssessmentView(context);
+  context.subscriptions.push(vscode.window.registerWebviewViewProvider('promptster.assessment', assessment));
+  assessment.refresh();
 
   teammates = new TeammatesView(context);
   context.subscriptions.push(vscode.window.registerWebviewViewProvider('promptster.teammates', teammates));
@@ -81,6 +87,7 @@ export function activate(context: vscode.ExtensionContext): void {
  * a duplicate does not add noise, it manufactures attention that did not occur.
  */
 async function reconcile(context: vscode.ExtensionContext): Promise<void> {
+  assessment.refresh();
   void teammates.refresh();
   const session = readSession();
   const paused = session ? store.read(session.sessionId).paused : false;
@@ -214,7 +221,9 @@ async function launchHostedAgent(session: PromptsterSession): Promise<void> {
   // agent below and makes the candidate choose between two apparently competing
   // entry points. Close it before focusing the assessment terminal.
   await vscode.commands.executeCommand('workbench.action.closeSecondarySideBar');
-  const terminal = vscode.window.createTerminal({ name: 'Promptster Assessment' });
+  const tool = command === 'claude' ? 'claude' : 'codex';
+  const terminal = vscode.window.createTerminal({ name: 'Promptster Assessment', env: { PROMPTSTER_TERMINAL_SESSION_ID: session.sessionId, PROMPTSTER_TERMINAL_TOOL: tool } });
+  assessment.trackTool(session.sessionId, tool, terminal);
   terminal.show(false);
   terminal.sendText(command, true);
   log(`Opened the hosted assessment terminal with ${command}`);
