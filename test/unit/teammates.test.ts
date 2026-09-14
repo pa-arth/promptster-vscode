@@ -90,6 +90,28 @@ describe('session thread boundary', () => {
   });
 });
 
+describe('webview restoration', () => {
+  it('restores roster and persisted history after visibility and ready refreshes', async () => {
+    vi.spyOn(config, 'readSession').mockReturnValue(session);
+    const persona = { id: 'priya', name: 'Priya', role: 'Architect', owns: 'Prior art', avatar: null };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async url => ({ ok: true, json: async () => String(url).endsWith('/messages') ? { messages: [sent, away] } : { personas: [persona] } }) as Response);
+    const posted: any[] = [];
+    let visibility!: () => void;
+    let receive!: (message: unknown) => void;
+    const webview = { cspSource: 'vscode-resource:', options: {}, html: '', onDidReceiveMessage: (fn: typeof receive) => { receive = fn; return { dispose() {} }; }, postMessage: (message: unknown) => { posted.push(message); return Promise.resolve(true); } };
+    const view = new TeammatesView({ subscriptions: [] } as never);
+    view.resolveWebviewView({ webview, visible: true, onDidChangeVisibility: (fn: typeof visibility) => { visibility = fn; return { dispose() {} }; } } as never);
+    await vi.waitFor(() => expect(posted.some(m => m.type === 'thread')).toBe(true));
+    for (const restore of [() => visibility(), () => receive({ type: 'refresh' })]) {
+      posted.length = 0;
+      restore();
+      await vi.waitFor(() => expect(posted.find(m => m.type === 'thread')?.messages).toEqual([sent, away]));
+      expect(posted.find(m => m.type === 'personas')?.personas[0].id).toBe('priya');
+    }
+    expect(webview.html).toContain("vscode.postMessage({type:'refresh'})");
+  });
+});
+
 describe('thread isolation', () => {
   it('contributes no command or language-model tool that returns thread contents', () => {
     const manifest = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));

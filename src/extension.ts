@@ -229,6 +229,11 @@ async function launchHostedAgent(session: PromptsterSession): Promise<void> {
     // Optional layout adjustments must never interrupt capture or tool launch.
     log(`Could not close the secondary sidebar: ${String(error)}`);
   }
+  try {
+    await vscode.commands.executeCommand('workbench.view.extension.promptster');
+  } catch (error) {
+    log(`Could not reveal the assessment sidebar: ${String(error)}`);
+  }
   const tool = command === 'claude' ? 'claude' : 'codex';
   const terminal = vscode.window.createTerminal({ name: 'Promptster Assessment', env: { PROMPTSTER_TERMINAL_SESSION_ID: session.sessionId, PROMPTSTER_TERMINAL_TOOL: tool } });
   assessment.trackTool(session.sessionId, tool, terminal);

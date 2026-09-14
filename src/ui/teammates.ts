@@ -57,6 +57,9 @@ export class TeammatesView implements vscode.WebviewViewProvider {
     view.webview.options = { enableScripts: true };
     view.webview.html = html(view.webview.cspSource);
     this.context.subscriptions.push(view.webview.onDidReceiveMessage((request: UiRequest) => void this.handle(request)));
+    if (view.onDidChangeVisibility) this.context.subscriptions.push(view.onDidChangeVisibility(() => {
+      if (view.visible) void this.refresh();
+    }));
     void this.refresh();
   }
 
@@ -86,6 +89,7 @@ export class TeammatesView implements vscode.WebviewViewProvider {
       await vscode.commands.executeCommand('setContext', 'promptster.ticketFlow', true);
       if (!this.isCurrent(session.sessionId)) return;
       this.post({ type: 'personas', sessionId: session.sessionId, personas: personas.map(p => ({ ...p, avatarUrl: this.avatarUrl(p.avatar) })), selected: this.selected });
+      this.post({ type: 'busy', sessionId: session.sessionId, value: this.busy });
       if (this.selected) await this.load(this.selected);
     } catch (error) {
       if (generation !== this.generation || !this.isCurrent(session.sessionId)) return;
@@ -172,5 +176,6 @@ function html(cspSource: string): string {
   function face(p){if(p?.avatarUrl){const img=document.createElement('img');img.src=p.avatarUrl;img.alt=p.name;img.className='face';return img}return text('span',p?.name.split(/\\s+/).map(x=>x[0]).slice(0,2).join('')||'?','face')}function renderPeople(){el('people').replaceChildren();for(const p of personas){const button=text('button','','person'+(p.id===selected?' active':''));button.type='button';button.append(face(p));const info=document.createElement('span');info.append(text('strong',p.name),text('small',p.role+' · '+p.owns));button.append(info);button.onclick=()=>vscode.postMessage({type:'select',id:p.id,sessionId});el('people').append(button)}}
   function renderMessages(messages){el('messages').replaceChildren();if(!messages.length)el('messages').append(text('p','Ask '+(person()?.name||'your teammate')+' about the ticket.','empty'));for(const m of messages){const mine=m.direction==='to_persona';const row=text('article','','message'+(mine?' mine':'')+(m.kind==='away'?' away':''));row.append(mine?text('span','YOU','face'):face(person()));const body=text('div','','body'),meta=text('div','','meta');meta.append(text('strong',mine?'You':person()?.name||'Teammate'),text('time',relative(m.at)));if(m.kind==='away')meta.append(text('span','Away','away-tag'));body.append(meta,text('div',m.text,'text'));row.append(body);el('messages').append(row)}el('messages').scrollTop=el('messages').scrollHeight}
   let threads={};function clear(nextSessionId){sessionId=nextSessionId;personas=[];selected=null;busy=false;threads={};el('draft').value='';el('notice').textContent='';el('people').replaceChildren();el('head').textContent='';el('send').disabled=false;el('status').textContent='Enter to send · Shift+Enter for newline';renderMessages([])}function send(){const value=el('draft').value.trim();if(!selected||busy||!value)return;vscode.postMessage({type:'send',id:selected,text:value,sessionId});el('draft').value='';el('notice').textContent=''}el('send').onclick=send;el('draft').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}};window.addEventListener('message',({data})=>{if(data.type==='reset'){clear(data.sessionId);return}if(data.sessionId!==sessionId)clear(data.sessionId);if(data.type==='personas'){personas=data.personas;selected=data.selected;renderPeople();el('head').textContent=person()?.name||'Teammates';renderMessages(threads[selected]||[])}if(data.type==='selected'){selected=data.id;renderPeople();el('head').textContent=person()?.name||'Teammates';renderMessages(threads[selected]||[])}if(data.type==='thread'){threads[data.id]=data.messages;if(selected===data.id)renderMessages(data.messages)}if(data.type==='append'){threads[data.id]=[...(threads[data.id]||[]),...data.messages];if(selected===data.id)renderMessages(threads[data.id])}if(data.type==='busy'){busy=data.value;el('send').disabled=busy;el('status').textContent=busy?'Waiting for reply…':'Enter to send · Shift+Enter for newline'}if(data.type==='error')el('notice').textContent=data.text});
+  vscode.postMessage({type:'refresh'});
   </script></body></html>`;
 }
