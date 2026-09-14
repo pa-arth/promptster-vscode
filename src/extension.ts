@@ -220,7 +220,15 @@ async function launchHostedAgent(session: PromptsterSession): Promise<void> {
   // default. It is unrelated to the recruiter-selected, Promptster-authenticated
   // agent below and makes the candidate choose between two apparently competing
   // entry points. Close it before focusing the assessment terminal.
-  await vscode.commands.executeCommand('workbench.action.closeSecondarySideBar');
+  try {
+    const commands = await vscode.commands.getCommands(true);
+    const closeSidebar = ['workbench.action.closeAuxiliaryBar', 'workbench.action.closeSecondarySideBar']
+      .find(commandId => commands.includes(commandId));
+    if (closeSidebar) await vscode.commands.executeCommand(closeSidebar);
+  } catch (error) {
+    // Optional layout adjustments must never interrupt capture or tool launch.
+    log(`Could not close the secondary sidebar: ${String(error)}`);
+  }
   const tool = command === 'claude' ? 'claude' : 'codex';
   const terminal = vscode.window.createTerminal({ name: 'Promptster Assessment', env: { PROMPTSTER_TERMINAL_SESSION_ID: session.sessionId, PROMPTSTER_TERMINAL_TOOL: tool } });
   assessment.trackTool(session.sessionId, tool, terminal);
