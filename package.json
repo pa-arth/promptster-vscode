@@ -2,7 +2,7 @@
   "name": "promptster",
   "displayName": "Promptster Assessment",
   "description": "Editor telemetry for Promptster hiring assessments \u2014 captures development process signals for evaluation.",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "publisher": "Promptster",
   "icon": "assets/icon.png",
   "license": "MIT",
@@ -59,7 +59,7 @@
         {
           "id": "promptster",
           "title": "Promptster",
-          "icon": "assets/icon.png"
+          "icon": "assets/activity.svg"
         }
       ]
     },
