@@ -59,6 +59,7 @@ function singleton<T>(key: string, make: () => T): T {
 }
 
 export const emitters = singleton('__promptsterFakeEmitters', () => ({
+  configuration: new Emitter<{ affectsConfiguration: (section: string) => boolean }>(),
   activeTextEditor: new Emitter<FakeEditor | undefined>(),
   windowState: new Emitter<{ focused: boolean }>(),
   textEditorSelection: new Emitter<{ textEditor: FakeEditor }>(),
@@ -87,6 +88,8 @@ export const emitters = singleton('__promptsterFakeEmitters', () => ({
 
 export const state = singleton('__promptsterFakeState', () => ({
   workspaceRoot: '/workspace',
+  /** Workspace settings, keyed as they appear in package.json contributions. */
+  settings: new Map<string, unknown>(),
   appName: 'Visual Studio Code',
   activeEditor: undefined as FakeEditor | undefined,
   /** fsPath -> diagnostics currently reported for it. */
@@ -98,6 +101,7 @@ export const state = singleton('__promptsterFakeState', () => ({
 export function resetState(): void {
   clearWatchers();
   state.workspaceRoot = '/workspace';
+  state.settings = new Map();
   state.appName = 'Visual Studio Code';
   state.activeEditor = undefined;
   state.diagnostics = new Map();
@@ -184,7 +188,25 @@ export function clearWatchers(): void {
   watchers.length = 0;
 }
 
+/**
+ * Set a workspace setting and fire the change event the extension listens for,
+ * the way unticking the box in the Settings UI does.
+ */
+export function setSetting(section: string, value: unknown): void {
+  state.settings.set(section, value);
+  emitters.configuration.fire({ affectsConfiguration: (s) => s === section });
+}
+
 export const workspace = {
+  getConfiguration(scope?: string) {
+    return {
+      get<T>(key: string, fallback?: T): T | undefined {
+        const full = scope ? `${scope}.${key}` : key;
+        return (state.settings.has(full) ? (state.settings.get(full) as T) : fallback);
+      },
+    };
+  },
+  onDidChangeConfiguration: emitters.configuration.event,
   get workspaceFolders() {
     return [{ uri: { fsPath: state.workspaceRoot } }];
   },

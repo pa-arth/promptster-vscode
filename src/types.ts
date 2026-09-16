@@ -126,6 +126,7 @@ export interface PromptsterSession extends PromptsterConfig {
 
 /** Why the extension is not capturing, when it is not. */
 export type NotCapturingReason =
+  | 'disabled'
   | 'no-session'
   | 'consent-not-recorded'
   | 'session-expired'

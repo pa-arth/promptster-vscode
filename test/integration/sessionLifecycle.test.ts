@@ -14,6 +14,7 @@ import {
   state,
   commands,
   fireWatcher,
+  setSetting,
   type FakeEditor,
 } from '../fakes/vscode';
 import type { PromptsterEvent } from '../../src/types';
@@ -29,6 +30,9 @@ import type { PromptsterEvent } from '../../src/types';
  */
 
 let memento: FakeMemento;
+
+/** The extension instance the current test activated, torn down in afterEach. */
+let activated: { deactivate: () => Promise<void> } | undefined;
 
 /** Bodies POSTed to the ingest endpoint, in order. */
 let posted: { url: string; headers: Record<string, string>; event: PromptsterEvent }[] = [];
@@ -112,7 +116,26 @@ async function activateExtension(
   version?: string,
 ): Promise<void> {
   ext.activate(makeExtensionContext(memento, version) as never);
+  activated = ext as unknown as { deactivate: () => Promise<void> };
   await vi.advanceTimersByTimeAsync(1);
+}
+
+/**
+ * Tear down whatever the test activated.
+ *
+ * `vi.resetModules()` gives the next test a fresh copy of the module, but the
+ * PREVIOUS copy's collectors are still subscribed to the fake's singleton
+ * emitters — so it keeps capturing into the next test's `posted` array. That is
+ * the same two-extensions-at-once problem `reloadExtension` documents, except
+ * it leaks across tests rather than within one. Only an assertion that `posted`
+ * is EMPTY can see it, which is why it survived until one was written.
+ */
+async function deactivateExtension(): Promise<void> {
+  if (!activated) return;
+  const pending = activated.deactivate();
+  activated = undefined;
+  await vi.advanceTimersByTimeAsync(1_000);
+  await pending;
 }
 
 /** Run a command that awaits a transport flush, keeping fake timers moving. */
@@ -142,7 +165,8 @@ describe('session lifecycle', () => {
     vi.useFakeTimers();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await deactivateExtension();
     vi.useRealTimers();
     vi.unstubAllGlobals();
     fs.rmSync(root, { recursive: true, force: true });
@@ -260,6 +284,55 @@ describe('session lifecycle', () => {
       });
       await flush();
       expect(posted).toEqual([]);
+    });
+
+    /**
+     * `promptster.enabled` shipped as a visible control described to the
+     * candidate as "Enable or disable Promptster telemetry capture" and was
+     * never read — `getConfiguration` appeared nowhere in src/. Unticking it
+     * changed nothing and capture continued, so anyone who opted out was still
+     * captured. These drive the real extension to prove both halves: it does
+     * not start when off, and unticking it STOPS a capture already running.
+     */
+    it('captures nothing when telemetry is disabled in settings', async () => {
+      setSetting('promptster.enabled', false);
+      writeSessionFile(root);
+      const ext = await loadExtension();
+      await activateExtension(ext);
+      activateFile(editorFor(path.join(root, 'src/index.ts')));
+      emitters.changeTextDocument.fire({
+        document: editorFor(path.join(root, 'src/index.ts')).document,
+        contentChanges: [
+          { text: 'x', rangeLength: 0, range: { start: { line: 0 }, end: { line: 0 } } },
+        ],
+      });
+      await flush();
+      expect(posted).toEqual([]);
+    });
+
+    it('stops a running capture the moment telemetry is disabled', async () => {
+      writeSessionFile(root);
+      const ext = await loadExtension();
+      await activateExtension(ext);
+      activateFile(editorFor(path.join(root, 'src/index.ts')));
+      await flush();
+      // It is genuinely capturing before the opt-out — otherwise the assertion
+      // below would pass for a session that never started.
+      expect(posted.length).toBeGreaterThan(0);
+
+      setSetting('promptster.enabled', false);
+      await flush();
+      const afterOptOut = posted.length;
+
+      activateFile(editorFor(path.join(root, 'src/other.ts')));
+      emitters.changeTextDocument.fire({
+        document: editorFor(path.join(root, 'src/other.ts')).document,
+        contentChanges: [
+          { text: 'y', rangeLength: 0, range: { start: { line: 0 }, end: { line: 0 } } },
+        ],
+      });
+      await flush();
+      expect(posted.length).toBe(afterOptOut);
     });
 
     it('treats a missing consent field as absent consent', async () => {
@@ -450,7 +523,8 @@ describe('capture state file (promptster doctor, §2.2)', () => {
     vi.useFakeTimers();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await deactivateExtension();
     vi.useRealTimers();
     vi.unstubAllGlobals();
     fs.rmSync(root, { recursive: true, force: true });
