@@ -26,8 +26,17 @@ import { isExpired } from './config';
 export function captureDecision(
   session: PromptsterSession | null,
   paused: boolean,
+  enabled: boolean,
   now = Date.now(),
 ): { capture: true } | { capture: false; reason: NotCapturingReason } {
+  // `promptster.enabled` is contributed in package.json and described to the
+  // candidate as "Enable or disable Promptster telemetry capture". Until now
+  // nothing read it: unticking the box changed nothing and capture continued,
+  // so anyone who relied on it was captured while believing they had opted out.
+  // It is checked FIRST and unconditionally -- an explicit opt-out outranks a
+  // session, a recorded consent and an unexpired key alike. There is no path
+  // that captures while this is false.
+  if (!enabled) return { capture: false, reason: 'disabled' };
   if (paused) return { capture: false, reason: 'paused' };
   if (!session) return { capture: false, reason: 'no-session' };
   if (!session.consentAccepted) return { capture: false, reason: 'consent-not-recorded' };
@@ -37,6 +46,8 @@ export function captureDecision(
 
 export function reasonText(reason: NotCapturingReason): string {
   switch (reason) {
+    case 'disabled':
+      return 'Not capturing — telemetry is disabled in settings (promptster.enabled).';
     case 'no-session':
       return 'No Promptster session in this workspace. Run `promptster start`.';
     case 'consent-not-recorded':
