@@ -281,8 +281,12 @@ exports.run = async () => {
       step.ms = Date.now() - t0;
       step.captureStateAfter = after;
       // The point of driving a command is the side effect, not the call
-      // returning. Say whether anything actually moved.
-      step.captureStateChanged = JSON.stringify(before) !== JSON.stringify(after);
+      // returning. Say whether anything actually moved — ignoring updatedAt,
+      // which reconcile() rewrites on every pass whether or not the decision
+      // changed. Comparing it would report "changed" for a command that did
+      // nothing, which is the exact failure this field exists to expose.
+      const meaningful = (s) => { if (!s) return null; const c = Object.assign({}, s); delete c.updatedAt; return JSON.stringify(c); };
+      step.captureStateChanged = meaningful(before) !== meaningful(after);
       rec.steps.push(step);
     }
     rec.captureStateAfter = captureState();

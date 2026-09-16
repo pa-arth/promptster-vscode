@@ -54,6 +54,9 @@ running the CLI, so it works from this repo alone.
 
 - `cli-detect` returns `idMatchesCLI: true` — this checkout's
   `publisher.name` is exactly `promptster.promptster` (case-insensitively).
+  **Judge the seam by `idMatchesCLI`, not by `ok`.** On a machine where `code`
+  is a symlink into another editor, `cli-detect` reports `ok: false` on the
+  impersonation hint alone, and will do so on a completely healthy checkout.
 - After `install`, `doctor` reports `installed.<editor>.installed: true` with a
   `version` equal to the manifest version. A version mismatch is not an error but
   it is skew: a reviewer reading an attention track cannot tell which collector

@@ -1,0 +1,13 @@
+{
+  "id": "capture-state-never-written",
+  "feature": "capture-lifecycle",
+  "expect": "FAIL",
+  "detects": "the extension activates, captures correctly and reports nothing — writeCaptureState always returns early, so .promptster/editor-capture.json is never created and promptster doctor reads the extension as 'installed but never activated'",
+  "why": "Subtle, and the exact shape of the bug that costs a hiring decision. Capture itself is fine, so an agent checking 'did the extension activate and register its commands' sees a clean run. The missing file makes a working session indistinguishable from a candidate who opened no files. It is caught only by reading back the capture state, which is what the skill says to do and what a pixel-checking agent skips.",
+  "defect": {
+    "file": "src/captureState.ts",
+    "find": "  if (!folders || folders.length === 0) return;",
+    "replace": "  if (!folders || folders.length >= 0) return;",
+    "rebuild": true
+  }
+}

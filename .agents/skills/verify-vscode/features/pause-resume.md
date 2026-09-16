@@ -52,7 +52,20 @@ handler is registered. What proves it:
 
 A step with `ok: true` and `captureStateChanged: false` on a pause is a **fail** —
 that is precisely the shape of a command that is registered, returns cleanly,
-shows its confirmation toast, and does nothing.
+shows its confirmation toast, and does nothing. Measured side by side on a real
+host, the two are told apart only by the side effect:
+
+```
+HEALTHY pause -> ok=True changed=True  capturing=False reason=paused
+BROKEN  pause -> ok=True changed=False capturing=True  reason=None
+```
+
+`ok` is `true` in both. Never stop at `ok`.
+
+`captureStateChanged` deliberately ignores `updatedAt`: `reconcile()` rewrites
+that timestamp on every pass whether or not the decision changed, so comparing
+whole files would report "changed" for a command that did nothing — the exact
+failure the field exists to expose.
 
 ## Gotchas
 

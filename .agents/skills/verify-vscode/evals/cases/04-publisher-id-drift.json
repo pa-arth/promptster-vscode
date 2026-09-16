@@ -1,0 +1,13 @@
+{
+  "id": "publisher-id-drift",
+  "feature": "cli-integration",
+  "expect": "FAIL",
+  "detects": "the manifest publisher changes, so the extension ships as PromptsterDev.promptster while promptster-cli still looks for the hard-coded promptster.promptster — the .vsix builds, installs and captures perfectly, and promptster doctor reports 'not installed' forever",
+  "why": "The cross-repo seam, and the case where the broken build looks MORE healthy than a real failure: drive it and everything passes, because the extension genuinely works. The defect lives in the agreement between two repos joined by a string, and it is caught only by running cli-detect — which the feature map names and an agent that only drives the editor never reaches. Its real-world cost is a candidate being told to re-run promptster start, forever, for a problem that has nothing to do with them.",
+  "defect": {
+    "file": "package.json",
+    "find": "  \"publisher\": \"Promptster\",",
+    "replace": "  \"publisher\": \"PromptsterDev\",",
+    "rebuild": false
+  }
+}
