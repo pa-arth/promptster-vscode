@@ -97,13 +97,18 @@ function inject(defect) {
 
 // ------------------------------------------------------------ verdict parsing
 
-// The agent is told to end with exactly one VERDICT line. Anything else is an
-// invalid run and is scored as such rather than guessed at — an eval that
-// guesses the agent's answer measures the parser, not the agent.
-function parseVerdict(out) {
-  const matches = [...out.matchAll(/^\s*VERDICT:\s*(PASS|FAIL)\s*$/gim)].map((m) => m[1].toUpperCase());
-  if (matches.length === 0) return { verdict: null, reason: "no VERDICT line" };
-  return { verdict: matches[matches.length - 1], reason: null };
+// The verdict is read from a FILE the agent writes, never scraped from its
+// output. Scraping was actively wrong: these TUIs echo the prompt back, so the
+// instruction lines "VERDICT: PASS / or / VERDICT: FAIL" appear in the
+// transcript verbatim and the parser read MY OWN PROMPT as the agent's answer.
+// That scored a confident verdict for runs where the agent sat at a permission
+// dialog and executed nothing at all.
+function readVerdict(verdictFile) {
+  if (!fs.existsSync(verdictFile)) return { verdict: null, reason: "agent wrote no verdict file" };
+  const raw = fs.readFileSync(verdictFile, "utf8").trim().toUpperCase();
+  try { fs.unlinkSync(verdictFile); } catch { /* best effort */ }
+  if (raw === "PASS" || raw === "FAIL") return { verdict: raw, reason: null };
+  return { verdict: null, reason: `verdict file held ${JSON.stringify(raw.slice(0, 40))}, not PASS or FAIL` };
 }
 
 // Did it actually drive something, rather than reading source and reasoning?
@@ -111,16 +116,18 @@ const sawEvidence = (out) => /promptster-verify|drive-\d{4}-|editor-capture\.jso
 
 // ------------------------------------------------------------ main
 
-const PROMPT = (feature) => `Use the verify-vscode skill to verify the "${feature}" feature of this VS Code extension is working correctly right now.
+const PROMPT = (feature, verdictFile) => `Use the verify-vscode skill to verify the "${feature}" feature of this VS Code extension is working correctly right now.
 
 Drive the real extension with the control CLI — launch an Extension Development Host and observe what the extension actually does. Do not read the source code to decide your answer. Clean up any host you start.
 
-End your reply with exactly one line, nothing after it:
-VERDICT: PASS
-or
-VERDICT: FAIL
+When you have decided, write your verdict to this exact path, as a file whose
+entire contents are one word, either PASS or FAIL:
 
-PASS means the feature works as its feature-map file says it should. FAIL means it does not.`;
+${verdictFile}
+
+For example: printf PASS > ${verdictFile}
+
+PASS means the feature works as its feature-map file says it should. FAIL means it does not. Write the file as the last thing you do; a run with no file written is scored as no answer.`;
 
 function validate() {
   const rows = loadCases().map((c) => {
@@ -170,14 +177,18 @@ async function main() {
       let revert = () => {};
       try {
         if (c.defect) revert = inject(c.defect);
-        const [cmd, args] = AGENTS[agent](PROMPT(c.feature));
+        const verdictFile = path.join(HERE, `.verdict-${agent}-${c.id}.txt`);
+        try { fs.unlinkSync(verdictFile); } catch { /* none from a previous run */ }
+        const [cmd, args] = AGENTS[agent](PROMPT(c.feature, verdictFile));
         const res = await run(cmd, args);
-        const { verdict, reason } = parseVerdict(res.out);
+        const { verdict, reason } = readVerdict(verdictFile);
         const correct = verdict === null ? null : verdict === c.expect;
         runs.push({
           agent, case: c.id, feature: c.feature, expect: c.expect, got: verdict,
           correct, invalid: reason, evidence: sawEvidence(res.out), ms: res.ms,
           detects: c.detects ?? null,
+          transcriptTail: (reason || correct === false) ? String(res.out).slice(-6000) : undefined,
+          exitCode: (reason || correct === false) ? res.code : undefined,
         });
         console.error(`${correct === true ? "HIT " : correct === false ? "MISS" : "INV "} ${agent}/${c.id} expect=${c.expect} got=${verdict ?? "-"} ${(res.ms / 1000).toFixed(0)}s`);
       } catch (e) {

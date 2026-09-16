@@ -1,0 +1,2 @@
+# per-run scratch: verdict drop-files the agent writes. Not a commit.
+.verdict-*.txt
