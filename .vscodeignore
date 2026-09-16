@@ -17,5 +17,14 @@ dist-vsix/**
 pnpm-lock.yaml
 RELEASING.md
 
+# Agent tooling: the verification skill and the per-tool symlinks into it.
+# Excluded for the same reason as .github/** — it is never extension payload —
+# and because vsce's secret scanner follows the symlinks and dies with EISDIR
+# trying to read a directory as a file, which fails the whole package step.
+.agents/**
+.claude/**
+.cursor/**
+.codex/**
+
 # Declaration files are a build artifact — nothing in a .vsix consumes them.
 dist/**/*.d.ts
