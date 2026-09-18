@@ -181,6 +181,25 @@ A proof that does not meet these is not evidence:
   leaves the machine. Do not verify transport behavior this way — `pnpm test`
   covers the sender and the offline queue properly.
 
+## 5b. Attest on the PR, or it will not merge
+
+Automerge requires a verify-vscode attestation naming the **head commit**.
+Marking a PR ready for review used to be the only signal that a proof happened,
+and nothing read it. Post this after the drive, from the branch:
+
+```bash
+gh pr comment <N> --body "<!-- verified: verify-vscode sha=$(git rev-parse HEAD) -->
+Drove: <what you drove>. Evidence: <the paths you captured>."
+```
+
+The SHA is the whole point. Push another commit and the attestation stops
+matching, so the PR blocks until you re-verify — verifying commit A and merging
+commit B is the failure this closes. Automerge also needs Greptile at 5/5 with
+no P1s; see `scripts/automerge-decision.mjs`.
+
+This is still your own claim. It does not prove you drove anything — it means
+not driving is now a thing you had to assert, not a thing you could skip.
+
 ## 6. Cleanup
 
 ```bash
