@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.5
+
+First tagged build since 0.3.2. It covers 0.3.3–0.3.5, which were bumped in
+`package.json` but never released.
+
+### Teammates view for ticket-flow assessments (#11)
+When the session sets `promptster.ticketFlow`, a Teammates view lists the
+ticket's personas. The candidate can message them; threads are recorded as
+`teammate_message` events through the persona endpoint. The view stays hidden on
+every other assessment.
+
+### Hosted assessments (#8, #9, #10)
+The extension recognizes the hosted session token, launches the assessment's
+agent automatically, and gives it focus when the box opens.
+
 ## 0.3.2
 
 Packaging and contributor tooling. **No change to what the extension collects or
