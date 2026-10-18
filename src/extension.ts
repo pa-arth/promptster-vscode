@@ -8,6 +8,7 @@ import type { CaptureOptions } from './collectors/base';
 import { SessionStore } from './sessionStore';
 import { writeCaptureState } from './captureState';
 import { StatusBarManager } from './ui/statusBar';
+import { TimeLeft } from './ui/timeLeft';
 import { registerCommands } from './ui/commands';
 import { TeammatesView } from './ui/teammates';
 import { loadIgnorePatterns } from './utils/pathSanitizer';
@@ -18,6 +19,7 @@ import type { PromptsterSession } from './types';
 const REATTACH_WINDOW_MS = 5_000;
 
 let statusBar: StatusBarManager;
+let timeLeft: TimeLeft;
 let store: SessionStore;
 let transport: TransportLayer | undefined;
 let collectors: CollectorRegistry | undefined;
@@ -33,7 +35,8 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBar = new StatusBarManager();
   store = new SessionStore(context.globalState);
   extensionVersion = context.extension?.packageJSON?.version ?? 'unknown';
-  context.subscriptions.push(statusBar);
+  timeLeft = new TimeLeft();
+  context.subscriptions.push(statusBar, timeLeft);
 
   teammates = new TeammatesView(context);
   context.subscriptions.push(vscode.window.registerWebviewViewProvider('promptster.teammates', teammates));
@@ -103,6 +106,8 @@ function captureEnabled(): boolean {
 async function reconcile(context: vscode.ExtensionContext): Promise<void> {
   void teammates.refresh();
   const session = readSession();
+  // The clock runs whether or not capture does: the limit applies either way.
+  timeLeft.set(session?.deadlineAt);
   const paused = session ? store.read(session.sessionId).paused : false;
   const decision = captureDecision(session, paused, captureEnabled());
 
