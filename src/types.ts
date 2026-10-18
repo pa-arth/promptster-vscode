@@ -116,6 +116,8 @@ export interface PromptsterSession extends PromptsterConfig {
   consentToIntegrity: boolean;
   /** Candidate-key expiry. Capture stops once it passes. */
   expiresAt?: string;
+  /** When the time limit runs out (epoch ms): startedAt + timeLimitMinutes. Absent = untimed. */
+  deadlineAt?: number;
   /** Tools selected by the hiring team for this assessment. */
   tools: Array<'claude' | 'codex'>;
   /** Seeded sessions run in a Promptster-owned hosted box. */

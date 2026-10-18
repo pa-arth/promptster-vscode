@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.6
+
+### A countdown, and a time's-up notice before the editor disconnects
+A timed session now shows the time left in the status bar (`42:13 left`). It
+turns amber in the last five minutes and warns at 10, 5 and 1 minutes left. At
+zero a modal says time is up, that work is being submitted automatically, and
+that the editor will disconnect. This is the one chance to say so: right after
+that the box pauses, the proxy drops the socket, and code-server can only show
+"Reconnecting". The deadline is `startedAt + timeLimitMinutes` from
+`session.json`, the same rule the CLI's watcher uses to submit, so the clock
+and the submit agree. Untimed sessions show nothing.
+
 ## 0.3.5
 
 First tagged build since 0.3.2. It covers 0.3.3–0.3.5, which were bumped in
