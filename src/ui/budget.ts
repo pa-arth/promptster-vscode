@@ -29,10 +29,14 @@ export class Budget implements vscode.Disposable {
   private item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 999);
   private interval: ReturnType<typeof setInterval> | undefined;
   private session: PromptsterSession | undefined;
+  /** Latest poll; an older one that finishes later must not overwrite it. */
+  private polls = 0;
 
-  /** Track a session, or stop and hide. Idempotent per session id. */
+  /** Track a session, or stop and hide. Idempotent per session id, key and API. */
   set(session: PromptsterSession | undefined): void {
-    if (session?.sessionId === this.session?.sessionId) return;
+    const same = (a?: PromptsterSession, b?: PromptsterSession) =>
+      a?.sessionId === b?.sessionId && a?.apiKey === b?.apiKey && a?.apiUrl === b?.apiUrl;
+    if (same(session, this.session)) return;
     this.session = session;
     clearInterval(this.interval);
     this.interval = undefined;
@@ -45,8 +49,9 @@ export class Budget implements vscode.Disposable {
   async tick(): Promise<void> {
     const session = this.session;
     if (!session) return;
+    const poll = ++this.polls;
     const budget = await fetchBudget(session);
-    if (session !== this.session) return;
+    if (session !== this.session || poll !== this.polls) return;
     if (!budget) {
       this.item.hide();
       return;

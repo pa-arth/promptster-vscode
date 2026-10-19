@@ -28,6 +28,33 @@ describe('budget', () => {
     expect(await fetchBudget(session)).toBeUndefined();
   });
 
+  it('restarts with the new key when a session is rewritten under the same id', async () => {
+    vi.useFakeTimers();
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ spentUsd: 2, budgetUsd: 25 }) } as Response);
+    const budget = new Budget();
+    budget.set(session);
+    budget.set({ ...session, apiKey: 'PST-new' });
+    await budget.tick();
+    expect(fetch).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ headers: { 'X-API-Key': 'PST-new' } }));
+    budget.dispose();
+    vi.useRealTimers();
+  });
+
+  it('keeps the newest spend when an older poll finishes last', async () => {
+    const answers: Array<(r: Response) => void> = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>(r => answers.push(r)));
+    const budget = new Budget();
+    const item = (budget as unknown as { item: { text: string } }).item;
+    budget.set(session);
+    const newer = budget.tick();
+    answers[1]({ ok: true, json: async () => ({ spentUsd: 5, budgetUsd: 25 }) } as Response);
+    await newer;
+    answers[0]({ ok: true, json: async () => ({ spentUsd: 1, budgetUsd: 25 }) } as Response);
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(item.text).toContain('$5.00 / $25.00');
+    budget.dispose();
+  });
+
   it('shows the budget, then hides it when a later read fails', async () => {
     vi.useFakeTimers();
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ spentUsd: 2, budgetUsd: 25 }) } as Response);
