@@ -150,6 +150,43 @@ describe('webview reload mid-send', () => {
     finishSend({ ok: true, json: async () => ({ threadId: 'priya', sent: away, reply: away }) } as Response);
   });
 
+  it('re-reads a thread whose read started before a send finished', async () => {
+    vi.spyOn(config, 'readSession').mockReturnValue(session);
+    const persona = { id: 'priya', name: 'Priya Raman', role: 'Architect', owns: 'Prior art', avatar: null };
+    const reply = { ...away, eventId: 'three', kind: 'message', text: 'Answer' };
+    let finishSend!: (r: Response) => void;
+    let finishStaleRead: ((r: Response) => void) | undefined;
+    let reads = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      if (init?.method === 'POST') return new Promise<Response>(r => { finishSend = r; });
+      if (!String(url).endsWith('/messages')) return { ok: true, json: async () => ({ personas: [persona] }) } as Response;
+      reads++;
+      // The second read (from a refresh mid-send) is slow and sees the pre-send history.
+      if (reads === 2) return new Promise<Response>(r => { finishStaleRead = r; });
+      return { ok: true, json: async () => ({ threadId: 'priya', messages: reads === 1 ? [] : [sent, reply] }) } as Response;
+    });
+    const posted: Array<{ type: string; messages?: unknown[] }> = [];
+    let receive!: (request: unknown) => void;
+    const view = new TeammatesView({ subscriptions: [] } as never);
+    view.resolveWebviewView({ webview: {
+      cspSource: 'vscode-resource:', options: {}, html: '',
+      onDidReceiveMessage: (l: (r: unknown) => void) => { receive = l; return { dispose() {} }; },
+      postMessage: (m: { type: string }) => { posted.push(m); return Promise.resolve(true); },
+    } } as never);
+    const settle = async (done: () => boolean) => { for (let i = 0; i < 50 && !done(); i++) await Promise.resolve(); };
+    await settle(() => posted.some(m => m.type === 'thread'));
+    receive({ type: 'send', id: 'priya', text: 'Question', sessionId: session.sessionId });
+    await settle(() => posted.some(m => m.type === 'busy'));
+    receive({ type: 'refresh' });
+    await settle(() => finishStaleRead !== undefined);
+    finishSend({ ok: true, json: async () => ({ threadId: 'priya', sent, reply }) } as Response);
+    await settle(() => posted.some(m => m.type === 'append'));
+    posted.length = 0;
+    finishStaleRead!({ ok: true, json: async () => ({ threadId: 'priya', messages: [] }) } as Response);
+    await settle(() => posted.some(m => m.type === 'thread'));
+    expect(posted.filter(m => m.type === 'thread').map(m => m.messages)).toEqual([[sent, reply]]);
+  });
+
   it('drops appended messages the reloaded thread already has', () => {
     const source = readFileSync(resolve('src/ui/teammates.ts'), 'utf8');
     expect(source).toContain('data.messages.filter(m=>!seen.has(m.eventId))');

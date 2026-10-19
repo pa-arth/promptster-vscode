@@ -47,6 +47,8 @@ export class TeammatesView implements vscode.WebviewViewProvider {
   private selected?: string;
   private generation = 0;
   private busy = false;
+  /** Sends answered so far; a thread read that spans one may predate its messages. */
+  private sendsDone = 0;
   private nonTicketFlowSessionId?: string;
   private currentSessionId?: string;
 
@@ -117,7 +119,9 @@ export class TeammatesView implements vscode.WebviewViewProvider {
     this.selected = id;
     this.post({ type: 'selected', sessionId: session.sessionId, id });
     try {
+      const sendsBefore = this.sendsDone;
       const thread = await new TeammatesApi(session).messages(id);
+      if (this.sendsDone !== sendsBefore) return this.load(id);
       if (this.isCurrent(session.sessionId) && this.selected === id) this.post({ type: 'thread', sessionId: session.sessionId, id, messages: thread.messages });
     } catch (error) {
       if (this.isCurrent(session.sessionId)) this.post({ type: 'error', sessionId: session.sessionId, text: errorText(error) });
@@ -137,6 +141,7 @@ export class TeammatesView implements vscode.WebviewViewProvider {
     this.post({ type: 'busy', sessionId: session.sessionId, value: true });
     try {
       const result = await new TeammatesApi(session).send(request.id, text);
+      this.sendsDone++;
       if (this.isCurrent(session.sessionId) && this.selected === request.id) this.post({ type: 'append', sessionId: session.sessionId, id: request.id, messages: [result.sent, result.reply] });
     } catch (error) {
       if (!this.isCurrent(session.sessionId)) return;
