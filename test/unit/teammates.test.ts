@@ -90,6 +90,28 @@ describe('session thread boundary', () => {
   });
 });
 
+describe('webview restoration', () => {
+  it('restores roster and persisted history after visibility and ready refreshes', async () => {
+    vi.spyOn(config, 'readSession').mockReturnValue(session);
+    const persona = { id: 'priya', name: 'Priya', role: 'Architect', owns: 'Prior art', avatar: null };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async url => ({ ok: true, json: async () => String(url).endsWith('/messages') ? { messages: [sent, away] } : { personas: [persona] } }) as Response);
+    const posted: any[] = [];
+    let visibility!: () => void;
+    let receive!: (message: unknown) => void;
+    const webview = { cspSource: 'vscode-resource:', options: {}, html: '', onDidReceiveMessage: (fn: typeof receive) => { receive = fn; return { dispose() {} }; }, postMessage: (message: unknown) => { posted.push(message); return Promise.resolve(true); } };
+    const view = new TeammatesView({ subscriptions: [] } as never);
+    view.resolveWebviewView({ webview, visible: true, onDidChangeVisibility: (fn: typeof visibility) => { visibility = fn; return { dispose() {} }; } } as never);
+    await vi.waitFor(() => expect(posted.some(m => m.type === 'thread')).toBe(true));
+    for (const restore of [() => visibility(), () => receive({ type: 'refresh' })]) {
+      posted.length = 0;
+      restore();
+      await vi.waitFor(() => expect(posted.find(m => m.type === 'thread')?.messages).toEqual([sent, away]));
+      expect(posted.find(m => m.type === 'personas')?.personas[0].id).toBe('priya');
+    }
+    expect(webview.html).toContain("vscode.postMessage({type:'refresh'})");
+  });
+});
+
 describe('thread isolation', () => {
   it('contributes no command or language-model tool that returns thread contents', () => {
     const manifest = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
@@ -97,5 +119,107 @@ describe('thread isolation', () => {
     expect(manifest.contributes.languageModelTools).toBeUndefined();
     const source = readFileSync(resolve('src/ui/teammates.ts'), 'utf8');
     expect(source).not.toMatch(/registerCommand|writeFile|process\.env|createTerminal|registerTool/);
+  });
+});
+describe('webview reload mid-send', () => {
+  it('re-sends busy so a reloaded panel does not accept a second message', async () => {
+    vi.spyOn(config, 'readSession').mockReturnValue(session);
+    const persona = { id: 'priya', name: 'Priya Raman', role: 'Architect', owns: 'Prior art', avatar: null };
+    let finishSend!: (r: Response) => void;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      if (init?.method === 'POST') return new Promise<Response>(r => { finishSend = r; });
+      return (String(url).endsWith('/messages')
+        ? { ok: true, json: async () => ({ threadId: 'priya', messages: [] }) }
+        : { ok: true, json: async () => ({ personas: [persona] }) }) as Response;
+    });
+    const posted: Array<{ type: string; value?: boolean }> = [];
+    let receive!: (request: unknown) => void;
+    const view = new TeammatesView({ subscriptions: [] } as never);
+    view.resolveWebviewView({ webview: {
+      cspSource: 'vscode-resource:', options: {}, html: '',
+      onDidReceiveMessage: (l: (r: unknown) => void) => { receive = l; return { dispose() {} }; },
+      postMessage: (m: { type: string }) => { posted.push(m); return Promise.resolve(true); },
+    } } as never);
+    for (let i = 0; i < 20 && !posted.some(m => m.type === 'thread'); i++) await Promise.resolve();
+    receive({ type: 'send', id: 'priya', text: 'hi', sessionId: session.sessionId });
+    for (let i = 0; i < 20 && !posted.some(m => m.type === 'busy'); i++) await Promise.resolve();
+    posted.length = 0;
+    receive({ type: 'refresh' });
+    for (let i = 0; i < 20 && !posted.some(m => m.type === 'busy'); i++) await Promise.resolve();
+    expect(posted.find(m => m.type === 'busy')?.value).toBe(true);
+    finishSend({ ok: true, json: async () => ({ threadId: 'priya', sent: away, reply: away }) } as Response);
+  });
+
+  it('re-reads a thread whose read started before a send finished', async () => {
+    vi.spyOn(config, 'readSession').mockReturnValue(session);
+    const persona = { id: 'priya', name: 'Priya Raman', role: 'Architect', owns: 'Prior art', avatar: null };
+    const reply = { ...away, eventId: 'three', kind: 'message', text: 'Answer' };
+    let finishSend!: (r: Response) => void;
+    let finishStaleRead: ((r: Response) => void) | undefined;
+    let reads = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      if (init?.method === 'POST') return new Promise<Response>(r => { finishSend = r; });
+      if (!String(url).endsWith('/messages')) return { ok: true, json: async () => ({ personas: [persona] }) } as Response;
+      reads++;
+      // The second read (from a refresh mid-send) is slow and sees the pre-send history.
+      if (reads === 2) return new Promise<Response>(r => { finishStaleRead = r; });
+      return { ok: true, json: async () => ({ threadId: 'priya', messages: reads === 1 ? [] : [sent, reply] }) } as Response;
+    });
+    const posted: Array<{ type: string; messages?: unknown[] }> = [];
+    let receive!: (request: unknown) => void;
+    const view = new TeammatesView({ subscriptions: [] } as never);
+    view.resolveWebviewView({ webview: {
+      cspSource: 'vscode-resource:', options: {}, html: '',
+      onDidReceiveMessage: (l: (r: unknown) => void) => { receive = l; return { dispose() {} }; },
+      postMessage: (m: { type: string }) => { posted.push(m); return Promise.resolve(true); },
+    } } as never);
+    const settle = async (done: () => boolean) => { for (let i = 0; i < 50 && !done(); i++) await Promise.resolve(); };
+    await settle(() => posted.some(m => m.type === 'thread'));
+    receive({ type: 'send', id: 'priya', text: 'Question', sessionId: session.sessionId });
+    await settle(() => posted.some(m => m.type === 'busy'));
+    receive({ type: 'refresh' });
+    await settle(() => finishStaleRead !== undefined);
+    finishSend({ ok: true, json: async () => ({ threadId: 'priya', sent, reply }) } as Response);
+    await settle(() => posted.some(m => m.type === 'append'));
+    posted.length = 0;
+    finishStaleRead!({ ok: true, json: async () => ({ threadId: 'priya', messages: [] }) } as Response);
+    await settle(() => posted.some(m => m.type === 'thread'));
+    expect(posted.filter(m => m.type === 'thread').map(m => m.messages)).toEqual([[sent, reply]]);
+  });
+
+  it('does not switch back to a teammate the user left when a send spans its read', async () => {
+    vi.spyOn(config, 'readSession').mockReturnValue(session);
+    const priya = { id: 'priya', name: 'Priya Raman', role: 'Architect', owns: 'Prior art', avatar: null };
+    const dana = { ...priya, id: 'dana', name: 'Dana' };
+    let finishPriyaRead: ((r: Response) => void) | undefined;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      if (init?.method === 'POST') return { ok: true, json: async () => ({ threadId: 'dana', sent, reply: away }) } as Response;
+      if (String(url).includes('/priya/messages')) return new Promise<Response>(r => { finishPriyaRead = r; });
+      if (String(url).endsWith('/messages')) return { ok: true, json: async () => ({ threadId: 'dana', messages: [] }) } as Response;
+      return { ok: true, json: async () => ({ personas: [priya, dana] }) } as Response;
+    });
+    const posted: Array<{ type: string; id?: string }> = [];
+    let receive!: (request: unknown) => void;
+    const view = new TeammatesView({ subscriptions: [] } as never);
+    view.resolveWebviewView({ webview: {
+      cspSource: 'vscode-resource:', options: {}, html: '',
+      onDidReceiveMessage: (l: (r: unknown) => void) => { receive = l; return { dispose() {} }; },
+      postMessage: (m: { type: string }) => { posted.push(m); return Promise.resolve(true); },
+    } } as never);
+    const settle = async (done: () => boolean) => { for (let i = 0; i < 50 && !done(); i++) await Promise.resolve(); };
+    await settle(() => finishPriyaRead !== undefined);
+    receive({ type: 'select', id: 'dana', sessionId: session.sessionId });
+    await settle(() => posted.some(m => m.type === 'thread' && m.id === 'dana'));
+    receive({ type: 'send', id: 'dana', text: 'Question', sessionId: session.sessionId });
+    await settle(() => posted.some(m => m.type === 'append'));
+    posted.length = 0;
+    finishPriyaRead!({ ok: true, json: async () => ({ threadId: 'priya', messages: [] }) } as Response);
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+    expect(posted.filter(m => m.type === 'selected').map(m => m.id)).toEqual([]);
+  });
+
+  it('drops appended messages the reloaded thread already has', () => {
+    const source = readFileSync(resolve('src/ui/teammates.ts'), 'utf8');
+    expect(source).toContain('data.messages.filter(m=>!seen.has(m.eventId))');
   });
 });

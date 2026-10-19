@@ -131,6 +131,7 @@ export const window = {
     command: undefined as unknown,
   }),
   registerWebviewViewProvider: () => ({ dispose: () => {} }),
+  registerCustomEditorProvider: () => ({ dispose: () => {} }),
   createTerminal: ({ name }: { name: string }) => {
     const terminal = { name, shown: false, commands: [] as string[] };
     state.terminals.push(terminal);
@@ -261,6 +262,7 @@ export const commands = singleton('__promptsterFakeCommands', () => {
   const registered = new Map<string, (...args: unknown[]) => unknown>();
   return {
     registered,
+    async getCommands(): Promise<string[]> { return [...registered.keys()]; },
     registerCommand(id: string, handler: (...args: unknown[]) => unknown): FakeDisposable {
       registered.set(id, handler);
       return { dispose: () => registered.delete(id) };
@@ -314,3 +316,11 @@ export function makeDocument(
     text,
   };
 }
+
+export const Uri = {
+  file: (fsPath: string) => ({ fsPath, toString: () => `file://${fsPath}` }),
+  joinPath: (base: { fsPath: string }, ...parts: string[]) => {
+    const fsPath = [base.fsPath, ...parts].join('/');
+    return { fsPath, toString: () => `file://${fsPath}` };
+  },
+};

@@ -179,12 +179,15 @@ describe('session lifecycle', () => {
       // fixture previously hid the production parser mismatch and prevented
       // reconcile() from ever reaching the existing auto-launch path.
       writeSessionFile(root, { key: undefined, noSelfEvict: true, tools: ['codex'] });
+      const revealAssessment = vi.fn();
+      commands.registered.set('workbench.view.extension.promptster', revealAssessment);
       const closeAgentSidebar = vi.fn();
-      commands.registered.set('workbench.action.closeSecondarySideBar', closeAgentSidebar);
+      commands.registered.set('workbench.action.closeAuxiliaryBar', closeAgentSidebar);
       const first = await loadExtension();
       await activateExtension(first);
 
       expect(closeAgentSidebar).toHaveBeenCalledOnce();
+      expect(revealAssessment).toHaveBeenCalledOnce();
       expect(state.terminals).toEqual([
         { name: 'Promptster Assessment', shown: true, commands: ['promptster codex'] },
       ]);
@@ -193,6 +196,15 @@ describe('session lifecycle', () => {
       await activateExtension(second);
       expect(closeAgentSidebar).toHaveBeenCalledOnce();
       expect(state.terminals).toHaveLength(1);
+    });
+
+    it('keeps capture and Codex available when an optional sidebar command fails', async () => {
+      writeSessionFile(root, { noSelfEvict: true, tools: ['codex'] });
+      commands.registered.set('workbench.action.closeAuxiliaryBar', () => { throw new Error('unsupported layout'); });
+      const ext = await loadExtension();
+      await activateExtension(ext);
+      expect(state.terminals[0]?.commands).toEqual(['promptster codex']);
+      expect(state.logLines.some(line => line.includes('Capture started for session'))).toBe(true);
     });
 
     it('does not open an agent terminal for local sessions', async () => {

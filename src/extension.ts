@@ -1,3 +1,4 @@
+import { TicketEditor } from './ui/ticket';
 import * as vscode from 'vscode';
 import { readSession, watchSession } from './config';
 import { captureDecision, reasonText } from './consent';
@@ -9,8 +10,10 @@ import { SessionStore } from './sessionStore';
 import { writeCaptureState } from './captureState';
 import { StatusBarManager } from './ui/statusBar';
 import { TimeLeft } from './ui/timeLeft';
+import { Budget } from './ui/budget';
 import { registerCommands } from './ui/commands';
 import { TeammatesView } from './ui/teammates';
+import { AssessmentView } from './ui/assessment';
 import { loadIgnorePatterns } from './utils/pathSanitizer';
 import { log, logError } from './utils/logger';
 import type { PromptsterSession } from './types';
@@ -20,12 +23,14 @@ const REATTACH_WINDOW_MS = 5_000;
 
 let statusBar: StatusBarManager;
 let timeLeft: TimeLeft;
+let budget: Budget;
 let store: SessionStore;
 let transport: TransportLayer | undefined;
 let collectors: CollectorRegistry | undefined;
 /** The session capture is currently running for, if any. */
 let running: PromptsterSession | undefined;
 let teammates: TeammatesView;
+let assessment: AssessmentView;
 /** Version of the running extension, read from the manifest at activation. */
 let extensionVersion = 'unknown';
 
@@ -36,7 +41,13 @@ export function activate(context: vscode.ExtensionContext): void {
   store = new SessionStore(context.globalState);
   extensionVersion = context.extension?.packageJSON?.version ?? 'unknown';
   timeLeft = new TimeLeft();
-  context.subscriptions.push(statusBar, timeLeft);
+  budget = new Budget();
+  context.subscriptions.push(statusBar, timeLeft, budget);
+
+  context.subscriptions.push(vscode.window.registerCustomEditorProvider('promptster.ticket', new TicketEditor()));
+  assessment = new AssessmentView(context);
+  context.subscriptions.push(vscode.window.registerWebviewViewProvider('promptster.assessment', assessment));
+  assessment.refresh();
 
   teammates = new TeammatesView(context);
   context.subscriptions.push(vscode.window.registerWebviewViewProvider('promptster.teammates', teammates));
@@ -104,10 +115,12 @@ function captureEnabled(): boolean {
  * a duplicate does not add noise, it manufactures attention that did not occur.
  */
 async function reconcile(context: vscode.ExtensionContext): Promise<void> {
+  assessment.refresh();
   void teammates.refresh();
   const session = readSession();
   // The clock runs whether or not capture does: the limit applies either way.
   timeLeft.set(session?.deadlineAt);
+  budget.set(session ?? undefined);
   const paused = session ? store.read(session.sessionId).paused : false;
   const decision = captureDecision(session, paused, captureEnabled());
 
@@ -238,8 +251,23 @@ async function launchHostedAgent(session: PromptsterSession): Promise<void> {
   // default. It is unrelated to the recruiter-selected, Promptster-authenticated
   // agent below and makes the candidate choose between two apparently competing
   // entry points. Close it before focusing the assessment terminal.
-  await vscode.commands.executeCommand('workbench.action.closeSecondarySideBar');
-  const terminal = vscode.window.createTerminal({ name: 'Promptster Assessment' });
+  try {
+    const commands = await vscode.commands.getCommands(true);
+    const closeSidebar = ['workbench.action.closeAuxiliaryBar', 'workbench.action.closeSecondarySideBar']
+      .find(commandId => commands.includes(commandId));
+    if (closeSidebar) await vscode.commands.executeCommand(closeSidebar);
+  } catch (error) {
+    // Optional layout adjustments must never interrupt capture or tool launch.
+    log(`Could not close the secondary sidebar: ${String(error)}`);
+  }
+  try {
+    await vscode.commands.executeCommand('workbench.view.extension.promptster');
+  } catch (error) {
+    log(`Could not reveal the assessment sidebar: ${String(error)}`);
+  }
+  const tool = command === 'claude' ? 'claude' : 'codex';
+  const terminal = vscode.window.createTerminal({ name: 'Promptster Assessment', env: { PROMPTSTER_TERMINAL_SESSION_ID: session.sessionId, PROMPTSTER_TERMINAL_TOOL: tool } });
+  assessment.trackTool(session.sessionId, tool, terminal);
   terminal.show(false);
   terminal.sendText(command, true);
   log(`Opened the hosted assessment terminal with ${command}`);

@@ -1,8 +1,8 @@
 {
   "name": "promptster",
   "displayName": "Promptster Assessment",
-  "description": "Editor telemetry for Promptster hiring assessments — captures development process signals for evaluation.",
-  "version": "0.3.6",
+  "description": "Editor telemetry for Promptster hiring assessments \u2014 captures development process signals for evaluation.",
+  "version": "0.3.11",
   "publisher": "Promptster",
   "icon": "assets/icon.png",
   "license": "MIT",
@@ -59,19 +59,38 @@
         {
           "id": "promptster",
           "title": "Promptster",
-          "icon": "assets/icon.png"
+          "icon": "assets/activity.svg"
         }
       ]
     },
     "views": {
       "promptster": [
         {
+          "id": "promptster.assessment",
+          "type": "webview",
+          "name": "Assessment",
+          "when": "promptster.assessmentWorkspace"
+        },
+        {
           "id": "promptster.teammates",
+          "type": "webview",
           "name": "Teammates",
           "when": "promptster.ticketFlow"
         }
       ]
-    }
+    },
+    "customEditors": [
+      {
+        "viewType": "promptster.ticket",
+        "displayName": "Assessment ticket",
+        "selector": [
+          {
+            "filenamePattern": "TASK.html"
+          }
+        ],
+        "priority": "default"
+      }
+    ]
   },
   "scripts": {
     "preinstall": "node scripts/only-pnpm.mjs",

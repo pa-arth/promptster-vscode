@@ -1,0 +1,120 @@
+import * as vscode from 'vscode';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { renderTicket } from './ticket';
+import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { readSession, isExpired } from '../config';
+
+interface WorkspaceBrief { id: string; title: string; specFile: string }
+const TOOL_NAMES = { claude: 'Claude Code', codex: 'Codex' } as const;
+
+export function parseWorkspaceBrief(raw: unknown): WorkspaceBrief | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const value = raw as Record<string, unknown>;
+  if (typeof value.id !== 'string' || typeof value.title !== 'string' || typeof value.specFile !== 'string') return null;
+  if (!/^[a-zA-Z0-9-]{1,80}$/.test(value.id) || !value.title.trim() || value.title.length > 300 || !/^[a-zA-Z0-9_-]+\.spec$/.test(value.specFile)) return null;
+  return { id: value.id, title: value.title, specFile: value.specFile };
+}
+
+function briefAt(root: string): WorkspaceBrief | null {
+  try { return parseWorkspaceBrief(JSON.parse(readFileSync(join(root, 'assessment.json'), 'utf8'))); }
+  catch { return null; }
+}
+
+/** Native navigation only. No extra model API, credentials, or teammate transcript export. */
+export class AssessmentView implements vscode.WebviewViewProvider {
+  private view?: vscode.WebviewView;
+  private terminals = new Map<string, vscode.Terminal>();
+  /** A submit is awaiting confirmation or saving; a second click must not start another. */
+  private submitting = false;
+  constructor(private readonly context: vscode.ExtensionContext) {
+    context.subscriptions.push(vscode.window.onDidCloseTerminal(terminal => {
+      for (const [key, value] of this.terminals) if (value === terminal) this.terminals.delete(key);
+    }));
+  }
+  resolveWebviewView(view: vscode.WebviewView): void {
+    this.view = view;
+    view.webview.options = { enableScripts: true };
+    view.webview.html = html();
+    this.context.subscriptions.push(view.webview.onDidReceiveMessage(request => void this.handle(request)));
+    this.refresh();
+  }
+  refresh(): void {
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const brief = root ? briefAt(root) : null;
+    const session = readSession();
+    const ready = !!(brief && session?.consentAccepted && !isExpired(session));
+    void vscode.commands.executeCommand('setContext', 'promptster.assessmentWorkspace', ready);
+    if (!this.view) return;
+    void this.view.webview.postMessage({
+      type: 'state', brief: ready ? brief : null, sessionId: ready ? session!.sessionId : null,
+      tools: ready ? [...new Set(session!.tools)].map(id => ({ id, name: TOOL_NAMES[id] })) : [],
+    });
+  }
+  trackTool(sessionId: string, tool: 'claude' | 'codex', terminal: vscode.Terminal): void {
+    this.terminals.set(`${sessionId}:${tool}`, terminal);
+  }
+  private async handle(request: { type?: unknown; action?: unknown; sessionId?: unknown; tool?: unknown }): Promise<void> {
+    if (request.type === 'ready') { this.refresh(); return; }
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const brief = root ? briefAt(root) : null;
+    const session = readSession();
+    if (!root || !brief || !session?.consentAccepted || isExpired(session) || request.sessionId !== session.sessionId) return;
+    try {
+      if (request.action === 'ticket') {
+        const path = join(root, 'TASK.html');
+        if (!existsSync(path)) writeFileSync(path, renderTicket(readFileSync(join(root, 'TASK.md'), 'utf8'), brief), { flag: 'wx' });
+        await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(path), 'promptster.ticket');
+      } else if (request.action === 'handoff') {
+        const uri = vscode.Uri.file(join(root, brief.specFile));
+        await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri), { preview: false });
+      } else if (request.action === 'tool') {
+        const tool = request.tool;
+        if ((tool !== 'claude' && tool !== 'codex') || !session.tools.includes(tool)) return;
+        const key = `${session.sessionId}:${tool}`;
+        let terminal = this.terminals.get(key) ?? vscode.window.terminals?.find(candidate => {
+          const env = (candidate.creationOptions as vscode.TerminalOptions).env;
+          return env?.PROMPTSTER_TERMINAL_SESSION_ID === session.sessionId && env?.PROMPTSTER_TERMINAL_TOOL === tool;
+        });
+        if (!terminal) {
+          terminal = vscode.window.createTerminal({ name: TOOL_NAMES[tool], cwd: root, env: { PROMPTSTER_TERMINAL_SESSION_ID: session.sessionId, PROMPTSTER_TERMINAL_TOOL: tool } });
+          this.terminals.set(key, terminal);
+          terminal.sendText(tool === 'codex' ? 'promptster codex' : 'claude', true);
+        }
+        terminal.show();
+      } else if (request.action === 'submit') {
+        // Keep the established CLI confirmation/upload flow; do not fake completion.
+        const key = `${session.sessionId}:submit`;
+        let terminal = this.terminals.get(key);
+        if (!terminal) {
+          if (this.submitting) return;
+          this.submitting = true;
+          try {
+            const accepted = await vscode.window.showWarningMessage('Review and submit this assessment? The submission command will guide you through the final steps.', { modal: true }, 'Review submission');
+            if (accepted !== 'Review submission') return;
+            const current = readSession();
+            if (!current?.consentAccepted || current.sessionId !== session.sessionId || isExpired(current)) return;
+            if (!await vscode.workspace.saveAll(false)) throw new Error('Some files could not be saved. Save them before submitting.');
+            terminal = vscode.window.createTerminal({ name: 'Assessment submission', cwd: root });
+            this.terminals.set(key, terminal);
+            terminal.sendText('promptster done', true);
+          } finally {
+            this.submitting = false;
+          }
+        }
+        terminal.show();
+      }
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Could not open assessment action: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
+
+function html(): string {
+  const nonce = randomBytes(18).toString('hex');
+  return `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'"><style nonce="${nonce}">
+  *{box-sizing:border-box}body{margin:0;color:var(--vscode-foreground);background:var(--vscode-sideBar-background);font:12px/1.6 var(--vscode-font-family)}main{padding:16px}.label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--vscode-descriptionForeground)}h1{font-size:17px;line-height:1.35;font-weight:600;margin:9px 0 20px}button{font:inherit;text-align:left;cursor:pointer;width:100%;padding:9px 11px;margin:0 0 8px;border-radius:3px;border:1px solid var(--vscode-panel-border);background:var(--vscode-editor-background);color:var(--vscode-foreground)}button:hover{background:var(--vscode-list-hoverBackground)}button:focus-visible{outline:2px solid var(--vscode-focusBorder)}section{margin:20px 0 0;padding-top:14px;border-top:1px solid var(--vscode-panel-border)}p{color:var(--vscode-descriptionForeground);font-size:11px;margin:6px 0 12px}.primary{background:var(--vscode-button-background);color:var(--vscode-button-foreground)}.primary:hover{background:var(--vscode-button-hoverBackground)}[hidden]{display:none!important}
+  </style></head><body><main><div id="empty">Open your assessment to begin.</div><div id="content" hidden><div id="key" class="label"></div><h1 id="title"></h1><button id="ticket">Open ticket</button><button id="handoff">Open handoff</button><section><div class="label">Coding tool</div><p>Enabled by the hiring company. Opens in your integrated terminal.</p><div id="tools"></div></section><section><div class="label">Finish your work</div><p>Save your handoff, then review your submission.</p><button id="submit" class="primary">Review &amp; submit</button></section></div></main><script nonce="${nonce}">
+  const api=acquireVsCodeApi(),el=id=>document.getElementById(id);let sessionId=null;const act=(action,tool)=>api.postMessage({action,tool,sessionId});el('ticket').onclick=()=>act('ticket');el('handoff').onclick=()=>act('handoff');el('submit').onclick=()=>act('submit');window.addEventListener('message',({data})=>{if(data.type!=='state')return;sessionId=data.sessionId;el('content').hidden=!data.brief;el('empty').hidden=!!data.brief;el('tools').replaceChildren();if(!data.brief)return;el('key').textContent=data.brief.id;el('title').textContent=data.brief.title;el('handoff').textContent='Open '+data.brief.specFile;for(const tool of data.tools){const b=document.createElement('button');b.textContent='Open '+tool.name;b.onclick=()=>act('tool',tool.id);el('tools').append(b)}if(!data.tools.length)el('tools').textContent='No coding tool is enabled for this session.'});api.postMessage({type:'ready'});
+  </script></body></html>`;
+}
