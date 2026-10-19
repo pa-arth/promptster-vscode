@@ -121,8 +121,9 @@ export class TeammatesView implements vscode.WebviewViewProvider {
     try {
       const sendsBefore = this.sendsDone;
       const thread = await new TeammatesApi(session).messages(id);
+      if (!this.isCurrent(session.sessionId) || this.selected !== id) return;
       if (this.sendsDone !== sendsBefore) return this.load(id);
-      if (this.isCurrent(session.sessionId) && this.selected === id) this.post({ type: 'thread', sessionId: session.sessionId, id, messages: thread.messages });
+      this.post({ type: 'thread', sessionId: session.sessionId, id, messages: thread.messages });
     } catch (error) {
       if (this.isCurrent(session.sessionId)) this.post({ type: 'error', sessionId: session.sessionId, text: errorText(error) });
     }

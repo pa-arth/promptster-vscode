@@ -187,6 +187,37 @@ describe('webview reload mid-send', () => {
     expect(posted.filter(m => m.type === 'thread').map(m => m.messages)).toEqual([[sent, reply]]);
   });
 
+  it('does not switch back to a teammate the user left when a send spans its read', async () => {
+    vi.spyOn(config, 'readSession').mockReturnValue(session);
+    const priya = { id: 'priya', name: 'Priya Raman', role: 'Architect', owns: 'Prior art', avatar: null };
+    const dana = { ...priya, id: 'dana', name: 'Dana' };
+    let finishPriyaRead: ((r: Response) => void) | undefined;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      if (init?.method === 'POST') return { ok: true, json: async () => ({ threadId: 'dana', sent, reply: away }) } as Response;
+      if (String(url).includes('/priya/messages')) return new Promise<Response>(r => { finishPriyaRead = r; });
+      if (String(url).endsWith('/messages')) return { ok: true, json: async () => ({ threadId: 'dana', messages: [] }) } as Response;
+      return { ok: true, json: async () => ({ personas: [priya, dana] }) } as Response;
+    });
+    const posted: Array<{ type: string; id?: string }> = [];
+    let receive!: (request: unknown) => void;
+    const view = new TeammatesView({ subscriptions: [] } as never);
+    view.resolveWebviewView({ webview: {
+      cspSource: 'vscode-resource:', options: {}, html: '',
+      onDidReceiveMessage: (l: (r: unknown) => void) => { receive = l; return { dispose() {} }; },
+      postMessage: (m: { type: string }) => { posted.push(m); return Promise.resolve(true); },
+    } } as never);
+    const settle = async (done: () => boolean) => { for (let i = 0; i < 50 && !done(); i++) await Promise.resolve(); };
+    await settle(() => finishPriyaRead !== undefined);
+    receive({ type: 'select', id: 'dana', sessionId: session.sessionId });
+    await settle(() => posted.some(m => m.type === 'thread' && m.id === 'dana'));
+    receive({ type: 'send', id: 'dana', text: 'Question', sessionId: session.sessionId });
+    await settle(() => posted.some(m => m.type === 'append'));
+    posted.length = 0;
+    finishPriyaRead!({ ok: true, json: async () => ({ threadId: 'priya', messages: [] }) } as Response);
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+    expect(posted.filter(m => m.type === 'selected').map(m => m.id)).toEqual([]);
+  });
+
   it('drops appended messages the reloaded thread already has', () => {
     const source = readFileSync(resolve('src/ui/teammates.ts'), 'utf8');
     expect(source).toContain('data.messages.filter(m=>!seen.has(m.eventId))');
