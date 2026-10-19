@@ -99,3 +99,28 @@ describe('thread isolation', () => {
     expect(source).not.toMatch(/registerCommand|writeFile|process\.env|createTerminal|registerTool/);
   });
 });
+
+describe('webview reload', () => {
+  it('a reloaded webview asks for its state and gets the personas back', async () => {
+    vi.spyOn(config, 'readSession').mockReturnValue(session);
+    const persona = { id: 'priya', name: 'Priya Raman', role: 'Architect', owns: 'Prior art', avatar: null };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => (String(url).endsWith('/messages')
+      ? { ok: true, json: async () => ({ threadId: 'priya', messages: [] }) }
+      : { ok: true, json: async () => ({ personas: [persona] }) }) as Response);
+    const posted: Array<{ type: string }> = [];
+    let receive!: (request: unknown) => void;
+    const webview = {
+      cspSource: 'vscode-resource:', options: {}, html: '',
+      onDidReceiveMessage: (listener: (request: unknown) => void) => { receive = listener; return { dispose() {} }; },
+      postMessage: (message: { type: string }) => { posted.push(message); return Promise.resolve(true); },
+    };
+    const view = new TeammatesView({ subscriptions: [] } as never);
+    view.resolveWebviewView({ webview } as never);
+    expect(webview.html).toContain("vscode.postMessage({type:'refresh'})");
+    for (let i = 0; i < 20 && !posted.some(m => m.type === 'thread'); i++) await Promise.resolve();
+    posted.length = 0;
+    receive({ type: 'refresh' });
+    for (let i = 0; i < 20 && !posted.some(m => m.type === 'personas'); i++) await Promise.resolve();
+    expect(posted.some(m => m.type === 'personas')).toBe(true);
+  });
+});
