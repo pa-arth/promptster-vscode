@@ -1,0 +1,13 @@
+{
+  "id": "pause-silently-fails",
+  "feature": "pause-resume",
+  "expect": "FAIL",
+  "detects": "promptster.pause is registered, resolves cleanly and still shows 'Promptster capture paused.' — but the persisted flag is never set, so reconcile leaves capture running and the extension keeps recording",
+  "why": "The case that matters most, and the hardest. Every surface an agent is tempted to check says PASS: the command exists, the call returns ok, the confirmation appears. Only the side effect disagrees — editor-capture.json still reads capturing:true with no 'paused' reason. Catching it requires the feature map's rule that a command is verified by its side effect and not by resolving. An agent that scores this PASS ships a product that records a candidate who was told they were not being recorded.",
+  "defect": {
+    "file": "src/extension.ts",
+    "find": "      if (session) await store.update(session.sessionId, { paused: true });",
+    "replace": "      if (session) await store.update(session.sessionId, { paused: false });",
+    "rebuild": true
+  }
+}

@@ -94,10 +94,22 @@ export function fromJson(
     consentAccepted: raw.consentAccepted === true,
     consentToIntegrity: raw.consentToIntegrity === true,
     expiresAt: str(raw.expiresAt),
+    deadlineAt: deadline(raw.startedAt, raw.timeLimitMinutes),
     tools: tools(raw.tools),
     hosted: raw.noSelfEvict === true,
     sourceFile,
   };
+}
+
+/**
+ * The CLI's own rule (promptster-cli time_limit.go, sessionDeadline): the limit
+ * runs from `startedAt`. No limit, or the Go zero time, means untimed.
+ */
+function deadline(startedAt: unknown, minutes: unknown): number | undefined {
+  const start = typeof startedAt === 'string' ? new Date(startedAt) : null;
+  if (!start || !Number.isFinite(start.getTime()) || start.getUTCFullYear() < 2000) return undefined;
+  if (typeof minutes !== 'number' || !(minutes > 0)) return undefined;
+  return start.getTime() + minutes * 60_000;
 }
 
 /** True once the candidate key has aged out. Capture must stop. */

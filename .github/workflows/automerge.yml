@@ -1,0 +1,117 @@
+name: Automerge
+
+# Squash-merge a ready PR once trusted CI + Greptile pass. Draft PRs never
+# merge: Cloud Agents open a draft BEFORE they finish verify-vscode, and CI
+# going green on that draft is not verification. Marking the PR ready is the
+# agent's signal that the live proof holds — not the merge.
+#
+# Checks are bound to GitHub App + workflow path, not name alone, so a PR
+# cannot gut ci.yml / add a decoy workflow and keep the job titles. Greptile's
+# check-run success only means "we reviewed"; the decision script also requires
+# confidence 5/5 and zero P1 comments.
+#
+# Ready-for-review used to be the only verification signal, and nothing read it.
+# The decision script now also requires a verify-vscode attestation naming the
+# head SHA:
+#
+#   gh pr comment <N> --body "<!-- verified: verify-vscode sha=$(git rev-parse HEAD) -->"
+#
+# That does not prove the agent drove the app. It does mean skipping the proof
+# is an explicit claim rather than a silent omission, and that a proof for an
+# earlier commit cannot carry a later push.
+#
+# pull_request_target + checkout of the default branch so this file and
+# scripts/automerge.mjs always run from MAIN. A PR cannot weaken the policy by
+# editing them. Forks are refused in the decision script.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+  check_run:
+    types: [completed]
+  issue_comment:
+    types: [created, edited]
+  pull_request_review:
+    types: [submitted]
+
+# One decision at a time per PR — and never lose the run the PR can see.
+#
+# The asymmetry that makes this matter: issue_comment and check_run runs
+# execute with head_sha = main, so their check-runs post against MAIN. Only the
+# pull_request_target run carries the PR head SHA, so it is the ONLY run
+# visible on the PR. promptster-teams #334 decided correctly for two days while
+# the PR showed nothing but a cancelled run.
+#
+# `cancel-in-progress: false` alone does NOT fix that. It protects the RUNNING
+# run; GitHub still evicts the PENDING one when a newer run joins the group. So
+# with a comment/review run executing and pull_request_target queued behind it,
+# one more comment or review on that PR replaces the pending pull_request_target
+# run — the PR-visible one, gone again. Putting the event name in the key is
+# what fixes it: pull_request_target never shares a group with comment/review
+# runs, so nothing can evict it.
+#
+# Keying everything on the PR number instead was rejected: check_run's number
+# comes from `check_run.pull_requests[0]`, which is empty for fork PRs AND for
+# check runs on pushes to main — both of which reach this workflow. The key
+# then degrades to a bare `automerge-` shared across unrelated PRs.
+#
+# Two gate runs racing costs nothing: the decision reads `merged` and refuses an
+# already-merged PR, and a non-200 from the merge API logs "will retry on next
+# event" and exits 0.
+concurrency:
+  group: automerge-${{ github.event.pull_request.number || github.event.issue.number || github.event.check_run.head_sha }}-${{ github.event_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  issues: read
+  actions: read
+
+jobs:
+  merge:
+    name: Automerge on green
+    # Ignore our own check_run or this workflow retriggers itself forever.
+    # Ignore fork pull_request_target (decision script also refuses forks).
+    # issue_comment / pull_request_review re-evaluate after Greptile posts, and
+    # after an attestation lands — without that second case a PR whose checks
+    # and review already finished has no event left to fire, so posting the
+    # marker it is waiting for would never be read. Letting any commenter
+    # retrigger is safe: the job runs main's script, which re-derives every
+    # signal from the API. A comment cannot fake a check run or a review.
+    if: >
+      (github.event_name == 'pull_request_target' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'check_run' &&
+       github.event.check_run.name != 'Automerge on green') ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+       (github.event.comment.user.login == 'greptile-apps[bot]' ||
+        contains(github.event.comment.body, 'verified: verify-vscode'))) ||
+      github.event_name == 'pull_request_review'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Squash-merge if ready and required checks are green
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AUTOMERGE_BASE_REF: main
+        # The checkout above is the DEFAULT branch, on purpose — policy runs from
+        # main, never from the PR. Until the PR that introduces this gate has
+        # merged, main has the workflow but not the script, and calling it
+        # anyway would fail the job on the introducing PR itself. "Not yet" is
+        # not a failure here; it is the pre-merge state.
+        run: |
+          if [ ! -f scripts/automerge.mjs ]; then
+            echo "automerge: scripts/automerge.mjs is not on the default branch yet — nothing to decide."
+            exit 0
+          fi
+          node scripts/automerge.mjs

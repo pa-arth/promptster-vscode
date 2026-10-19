@@ -8,5 +8,9 @@ dist-vsix/
 package-lock.json
 yarn.lock
 
-# agent worktrees / local session state
-/.claude/
+# agent worktrees / local session state. Narrowed from `/.claude/` so the
+# verification skill's Claude-Code symlink is committable: an excluded parent
+# directory cannot be re-included by a negation, so the glob has to be on the
+# children. Worktrees (/.claude/worktrees) stay ignored.
+/.claude/*
+!/.claude/skills/

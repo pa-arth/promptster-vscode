@@ -9,6 +9,7 @@ import type { CaptureOptions } from './collectors/base';
 import { SessionStore } from './sessionStore';
 import { writeCaptureState } from './captureState';
 import { StatusBarManager } from './ui/statusBar';
+import { TimeLeft } from './ui/timeLeft';
 import { registerCommands } from './ui/commands';
 import { TeammatesView } from './ui/teammates';
 import { AssessmentView } from './ui/assessment';
@@ -20,6 +21,7 @@ import type { PromptsterSession } from './types';
 const REATTACH_WINDOW_MS = 5_000;
 
 let statusBar: StatusBarManager;
+let timeLeft: TimeLeft;
 let store: SessionStore;
 let transport: TransportLayer | undefined;
 let collectors: CollectorRegistry | undefined;
@@ -36,7 +38,8 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBar = new StatusBarManager();
   store = new SessionStore(context.globalState);
   extensionVersion = context.extension?.packageJSON?.version ?? 'unknown';
-  context.subscriptions.push(statusBar);
+  timeLeft = new TimeLeft();
+  context.subscriptions.push(statusBar, timeLeft);
 
   context.subscriptions.push(vscode.window.registerCustomEditorProvider('promptster.ticket', new TicketEditor()));
   assessment = new AssessmentView(context);
@@ -76,6 +79,26 @@ export function activate(context: vscode.ExtensionContext): void {
   // The CLI rewrites session.json several times during a session. Every write
   // lands here, so this must be a reconcile, never a restart — see reconcile().
   context.subscriptions.push(watchSession(() => void reconcile(context)));
+
+  // Unticking the setting has to stop a capture that is ALREADY running, not
+  // only prevent the next one. Without this the opt-out would appear to work
+  // and not take effect until the window reloaded.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('promptster.enabled')) void reconcile(context);
+    }),
+  );
+}
+
+/**
+ * The candidate's telemetry opt-out, read fresh on every decision.
+ *
+ * Defaults to true to match the manifest's `default: true` — an unreadable or
+ * absent setting must not silently disable capture for everyone. Explicitly
+ * false is the only value that stops it.
+ */
+function captureEnabled(): boolean {
+  return vscode.workspace.getConfiguration('promptster').get<boolean>('enabled', true) !== false;
 }
 
 /**
@@ -92,8 +115,10 @@ async function reconcile(context: vscode.ExtensionContext): Promise<void> {
   assessment.refresh();
   void teammates.refresh();
   const session = readSession();
+  // The clock runs whether or not capture does: the limit applies either way.
+  timeLeft.set(session?.deadlineAt);
   const paused = session ? store.read(session.sessionId).paused : false;
-  const decision = captureDecision(session, paused);
+  const decision = captureDecision(session, paused, captureEnabled());
 
   if (!decision.capture) {
     if (running) {

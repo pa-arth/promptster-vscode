@@ -1,0 +1,13 @@
+{
+  "id": "pause-command-not-registered",
+  "feature": "pause-resume",
+  "expect": "FAIL",
+  "detects": "promptster.pause is contributed in package.json but never registered, so it is absent from the live command registry and invoking it throws",
+  "why": "Shallow defect, and the floor of the eval. The command is in the palette and does not exist. An agent that misses it is not driving the extension at all; it is reading source or hallucinating.",
+  "defect": {
+    "file": "src/ui/commands.ts",
+    "find": "    vscode.commands.registerCommand('promptster.pause', async () => {",
+    "replace": "    vscode.commands.registerCommand('promptster.pause.disabled', async () => {",
+    "rebuild": true
+  }
+}
