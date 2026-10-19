@@ -25,6 +25,8 @@ function briefAt(root: string): WorkspaceBrief | null {
 export class AssessmentView implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private terminals = new Map<string, vscode.Terminal>();
+  /** A submit is awaiting confirmation or saving; a second click must not start another. */
+  private submitting = false;
   constructor(private readonly context: vscode.ExtensionContext) {
     context.subscriptions.push(vscode.window.onDidCloseTerminal(terminal => {
       for (const [key, value] of this.terminals) if (value === terminal) this.terminals.delete(key);
@@ -85,14 +87,20 @@ export class AssessmentView implements vscode.WebviewViewProvider {
         const key = `${session.sessionId}:submit`;
         let terminal = this.terminals.get(key);
         if (!terminal) {
-          const accepted = await vscode.window.showWarningMessage('Review and submit this assessment? The submission command will guide you through the final steps.', { modal: true }, 'Review submission');
-          if (accepted !== 'Review submission') return;
-          const current = readSession();
-          if (!current?.consentAccepted || current.sessionId !== session.sessionId || isExpired(current)) return;
-          if (!await vscode.workspace.saveAll(false)) throw new Error('Some files could not be saved. Save them before submitting.');
-          terminal = vscode.window.createTerminal({ name: 'Assessment submission', cwd: root });
-          this.terminals.set(key, terminal);
-          terminal.sendText('promptster done', true);
+          if (this.submitting) return;
+          this.submitting = true;
+          try {
+            const accepted = await vscode.window.showWarningMessage('Review and submit this assessment? The submission command will guide you through the final steps.', { modal: true }, 'Review submission');
+            if (accepted !== 'Review submission') return;
+            const current = readSession();
+            if (!current?.consentAccepted || current.sessionId !== session.sessionId || isExpired(current)) return;
+            if (!await vscode.workspace.saveAll(false)) throw new Error('Some files could not be saved. Save them before submitting.');
+            terminal = vscode.window.createTerminal({ name: 'Assessment submission', cwd: root });
+            this.terminals.set(key, terminal);
+            terminal.sendText('promptster done', true);
+          } finally {
+            this.submitting = false;
+          }
         }
         terminal.show();
       }

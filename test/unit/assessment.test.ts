@@ -57,6 +57,22 @@ describe('native assessment actions',()=>{
       else window.showWarningMessage = previous;
     }
   });
+  it('opens one submission flow for a double-click', async () => {
+    view();
+    const window = vscode.window as unknown as Record<string, unknown>;
+    const workspace = vscode.workspace as unknown as Record<string, unknown>;
+    const previous = [window.showWarningMessage, workspace.saveAll];
+    window.showWarningMessage = vi.fn(async () => 'Review submission');
+    workspace.saveAll = vi.fn(async () => true);
+    try {
+      await Promise.all([receive({ action: 'submit', sessionId: 's1' }), receive({ action: 'submit', sessionId: 's1' })]);
+      expect(state.terminals).toHaveLength(1);
+      expect(window.showWarningMessage).toHaveBeenCalledTimes(1);
+    } finally {
+      if (previous[0] === undefined) delete window.showWarningMessage; else window.showWarningMessage = previous[0];
+      if (previous[1] === undefined) delete workspace.saveAll; else workspace.saveAll = previous[1];
+    }
+  });
   it('rejects unassigned tools, shell text and stale session messages',async()=>{view();await receive({action:'tool',tool:'claude',sessionId:'s1'});await receive({action:'tool',tool:'codex; bad-command',sessionId:'s1'});await receive({action:'tool',tool:'codex',sessionId:'previous'});expect(state.terminals).toHaveLength(0)});
   it('rechecks consent and expiry when an action arrives',async()=>{view();vi.spyOn(config,'readSession').mockReturnValue({...session,consentAccepted:false});await receive({action:'tool',tool:'codex',sessionId:'s1'});vi.spyOn(config,'readSession').mockReturnValue({...session,expiresAt:'2020-01-01T00:00:00Z'});await receive({action:'tool',tool:'codex',sessionId:'s1'});expect(state.terminals).toHaveLength(0)});
   it('does not launch without an assessment workspace',async()=>{rmSync(join(root,'assessment.json'));view();await receive({action:'tool',tool:'codex',sessionId:'s1'});expect(state.terminals).toHaveLength(0)});
