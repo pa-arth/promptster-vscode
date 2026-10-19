@@ -124,3 +124,38 @@ describe('webview reload', () => {
     expect(posted.some(m => m.type === 'personas')).toBe(true);
   });
 });
+
+describe('webview reload mid-send', () => {
+  it('re-sends busy so a reloaded panel does not accept a second message', async () => {
+    vi.spyOn(config, 'readSession').mockReturnValue(session);
+    const persona = { id: 'priya', name: 'Priya Raman', role: 'Architect', owns: 'Prior art', avatar: null };
+    let finishSend!: (r: Response) => void;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      if (init?.method === 'POST') return new Promise<Response>(r => { finishSend = r; });
+      return (String(url).endsWith('/messages')
+        ? { ok: true, json: async () => ({ threadId: 'priya', messages: [] }) }
+        : { ok: true, json: async () => ({ personas: [persona] }) }) as Response;
+    });
+    const posted: Array<{ type: string; value?: boolean }> = [];
+    let receive!: (request: unknown) => void;
+    const view = new TeammatesView({ subscriptions: [] } as never);
+    view.resolveWebviewView({ webview: {
+      cspSource: 'vscode-resource:', options: {}, html: '',
+      onDidReceiveMessage: (l: (r: unknown) => void) => { receive = l; return { dispose() {} }; },
+      postMessage: (m: { type: string }) => { posted.push(m); return Promise.resolve(true); },
+    } } as never);
+    for (let i = 0; i < 20 && !posted.some(m => m.type === 'thread'); i++) await Promise.resolve();
+    receive({ type: 'send', id: 'priya', text: 'hi', sessionId: session.sessionId });
+    for (let i = 0; i < 20 && !posted.some(m => m.type === 'busy'); i++) await Promise.resolve();
+    posted.length = 0;
+    receive({ type: 'refresh' });
+    for (let i = 0; i < 20 && !posted.some(m => m.type === 'busy'); i++) await Promise.resolve();
+    expect(posted.find(m => m.type === 'busy')?.value).toBe(true);
+    finishSend({ ok: true, json: async () => ({ threadId: 'priya', sent: away, reply: away }) } as Response);
+  });
+
+  it('drops appended messages the reloaded thread already has', () => {
+    const source = readFileSync(resolve('src/ui/teammates.ts'), 'utf8');
+    expect(source).toContain('data.messages.filter(m=>!seen.has(m.eventId))');
+  });
+});
