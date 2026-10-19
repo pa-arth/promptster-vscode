@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.3.11
+
+Reconciles the two histories: 0.3.7–0.3.10 shipped to hosted boxes from a local
+`main` that was never pushed and never merged the 0.3.6 work on `origin/main`.
+This build carries both.
+
+### Budget in the status bar
+Beside the clock: AI spend against the assessment's budget (`$3.21 / $25.00`),
+read from `GET /v1/sessions/:id/budget` with the session key and refreshed once
+a minute. The budget is the same cap the model proxy enforces. When it can't be
+read the item is hidden rather than showing `$0`.
+
+### Teammates: a reload mid-send
+A Teammates panel that reloads while a message is in flight stays in its
+waiting state instead of accepting a second message the extension would drop,
+and the reply isn't shown twice.
+
+### A countdown (first shipped here; landed as 0.3.6 on origin/main), and a time's-up notice before the editor disconnects
+A timed session now shows the time left in the status bar (`42:13 left`). It
+turns amber in the last five minutes and warns at 10, 5 and 1 minutes left. At
+zero a modal says time is up, that work is being submitted automatically, and
+that the editor will disconnect. This is the one chance to say so: right after
+that the box pauses, the proxy drops the socket, and code-server can only show
+"Reconnecting". The deadline is `startedAt + timeLimitMinutes` from
+`session.json`, the same rule the CLI's watcher uses to submit, so the clock
+and the submit agree. Untimed sessions show nothing.
+
 ## 0.3.6
 
 Add native assessment navigation for ticket-flow workspaces: ticket and handoff files, company-assigned Codex or Claude Code terminals, and saved submission through the existing CLI. Reuse the hosted session’s agent terminal. Gate actions on the current session, consent, and expiry; recheck consent after submission confirmation. Correct the Teammates view’s webview declaration.

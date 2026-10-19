@@ -10,6 +10,7 @@ import { SessionStore } from './sessionStore';
 import { writeCaptureState } from './captureState';
 import { StatusBarManager } from './ui/statusBar';
 import { TimeLeft } from './ui/timeLeft';
+import { Budget } from './ui/budget';
 import { registerCommands } from './ui/commands';
 import { TeammatesView } from './ui/teammates';
 import { AssessmentView } from './ui/assessment';
@@ -22,6 +23,7 @@ const REATTACH_WINDOW_MS = 5_000;
 
 let statusBar: StatusBarManager;
 let timeLeft: TimeLeft;
+let budget: Budget;
 let store: SessionStore;
 let transport: TransportLayer | undefined;
 let collectors: CollectorRegistry | undefined;
@@ -39,7 +41,8 @@ export function activate(context: vscode.ExtensionContext): void {
   store = new SessionStore(context.globalState);
   extensionVersion = context.extension?.packageJSON?.version ?? 'unknown';
   timeLeft = new TimeLeft();
-  context.subscriptions.push(statusBar, timeLeft);
+  budget = new Budget();
+  context.subscriptions.push(statusBar, timeLeft, budget);
 
   context.subscriptions.push(vscode.window.registerCustomEditorProvider('promptster.ticket', new TicketEditor()));
   assessment = new AssessmentView(context);
@@ -117,6 +120,7 @@ async function reconcile(context: vscode.ExtensionContext): Promise<void> {
   const session = readSession();
   // The clock runs whether or not capture does: the limit applies either way.
   timeLeft.set(session?.deadlineAt);
+  budget.set(session ?? undefined);
   const paused = session ? store.read(session.sessionId).paused : false;
   const decision = captureDecision(session, paused, captureEnabled());
 
