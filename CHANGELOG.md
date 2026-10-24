@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.12
 
 ### Agent writes are no longer candidate edits
 A file the agent wrote while it was open in the editor came through as a
