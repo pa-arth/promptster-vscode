@@ -22,15 +22,19 @@ export interface EventSource {
   repo?: string;
 }
 
+/**
+ * Who performed what an event records. The candidate, except for what the
+ * extension only observes without seeing who did it (filesystem watcher).
+ */
 export interface EventActor {
-  type: 'human';
-  role: 'candidate';
+  type: 'human' | 'system';
+  role: 'candidate' | 'file-watcher';
   id?: string;
   display?: string;
 }
 
 export interface EventProvenance {
-  attribution: 'likely_human';
+  attribution: 'likely_human' | 'unknown';
   confidence: number;
   observability: 'high';
   methods: string[];

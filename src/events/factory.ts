@@ -2,6 +2,21 @@ import * as crypto from 'crypto';
 import type { PromptsterConfig, PromptsterEvent, EventKind, EventSource, Integration } from '../types';
 import { detectIntegration } from '../utils/editorDetector';
 
+export interface EventAttribution {
+  actor: PromptsterEvent['actor'];
+  provenance: PromptsterEvent['provenance'];
+}
+
+const CANDIDATE_ACT: EventAttribution = {
+  actor: { type: 'human', role: 'candidate' },
+  provenance: {
+    attribution: 'likely_human',
+    confidence: 1.0,
+    observability: 'high',
+    methods: ['ide-extension'],
+  },
+};
+
 export class EventFactory {
   private readonly integration: Integration;
   private readonly source: EventSource;
@@ -23,22 +38,22 @@ export class EventFactory {
     };
   }
 
-  create(kind: EventKind, data: Record<string, unknown>): PromptsterEvent {
+  /**
+   * Every event defaults to the candidate's own act. `attribution` overrides
+   * that for what the extension merely observes (see fileLifecycle.ts).
+   */
+  create(
+    kind: EventKind,
+    data: Record<string, unknown>,
+    attribution: EventAttribution = CANDIDATE_ACT,
+  ): PromptsterEvent {
     return {
       id: crypto.randomUUID(),
       sessionId: this.config.sessionId,
       ts: new Date().toISOString(),
       source: this.source,
-      actor: {
-        type: 'human',
-        role: 'candidate',
-      },
-      provenance: {
-        attribution: 'likely_human',
-        confidence: 1.0,
-        observability: 'high',
-        methods: ['ide-extension'],
-      },
+      actor: { ...attribution.actor },
+      provenance: { ...attribution.provenance, methods: [...attribution.provenance.methods] },
       v: 1,
       kind,
       data,
