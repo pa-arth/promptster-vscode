@@ -22,6 +22,12 @@ export class EditPatternCollector extends BaseCollector {
     this.disposables.push(
       vscode.workspace.onDidChangeTextDocument((e) => {
         if (e.document.uri.scheme !== 'file') return;
+        // A change that leaves the document clean is the editor reloading it
+        // from disk — almost always the agent writing the file. A keystroke or
+        // a real paste always leaves the document dirty at the moment it fires.
+        // Without this, every file Claude wrote while it was open came through
+        // as a candidate paste of the agent's code.
+        if (e.document.isDirty === false) return;
 
         const filePath = sanitizePath(e.document.uri.fsPath);
         if (!filePath) return;

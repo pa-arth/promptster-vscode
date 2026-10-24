@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Agent writes are no longer candidate edits
+A file the agent wrote while it was open in the editor came through as a
+candidate `paste` of the agent's code: VS Code reloads the document from disk
+and fires the same change event a keystroke does. A change that leaves the
+document clean is now dropped — a keystroke or real paste always leaves it
+dirty. File-watcher `file_create` / `file_delete` events are now stamped as a
+system observation (`actor.type: system`, attribution `unknown`) instead of the
+candidate: the watcher sees that a file appeared, not who made it, and the
+agent's Write tool fires a create on every write. Found on hosted "CI queue
+poller" sessions where files only Claude touched read as human-revised. The
+backend reconciles already-stored sessions (promptster-backend
+`authorshipReconcile`).
+
 ## 0.3.11
 
 Reconciles the two histories: 0.3.7–0.3.10 shipped to hosted boxes from a local
