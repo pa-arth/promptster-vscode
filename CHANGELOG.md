@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.14
 
 ### Mid-session check-ins (openspec `mid-session-check-ins`, tasks 2.1–2.3)
 When the hiring team turns check-ins on, Jordan (engineering lead) appears first
