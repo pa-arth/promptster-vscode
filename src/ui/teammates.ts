@@ -75,6 +75,8 @@ export class TeammatesView implements vscode.WebviewViewProvider, vscode.Disposa
   private readonly read = new Set<string>();
   /** Check-ins already announced, so repeat polls and a follow-up received inline do not announce again. */
   private readonly announced = new Set<string>();
+  /** A reply to Jordan is in flight: announcements wait for it, then a poll reconciles (its follow-up may be the new question). */
+  private checkInSending = false;
   private readonly timer = setInterval(() => void this.poll(), POLL_MS);
 
   constructor(private readonly context: vscode.ExtensionContext) { context.subscriptions.push(this); }
@@ -103,6 +105,8 @@ export class TeammatesView implements vscode.WebviewViewProvider, vscode.Disposa
       this.selected = undefined;
       this.busy = false;
       this.pending = undefined;
+      // Stopped means stopped for that session only; returning to it asks again.
+      this.checkInsOffSessionId = undefined;
       this.post({ type: 'reset', sessionId: session?.sessionId ?? null });
       await vscode.commands.executeCommand('setContext', 'promptster.ticketFlow', false);
     }
@@ -157,8 +161,10 @@ export class TeammatesView implements vscode.WebviewViewProvider, vscode.Disposa
   /** Every 30s: materializes a due check-in server-side and announces it. Only the check-in endpoint is polled. */
   private async poll(): Promise<void> {
     const session = readSession();
-    if (!session || session.sessionId === this.checkInsOffSessionId) return;
-    if (session.sessionId !== this.currentSessionId || !this.personas.some(p => p.id === CHECK_IN)) return this.refresh();
+    if (!session) return;
+    if (session.sessionId !== this.currentSessionId) return this.refresh();
+    if (session.sessionId === this.checkInsOffSessionId) return;
+    if (!this.personas.some(p => p.id === CHECK_IN)) return this.refresh();
     const sendsBefore = this.sendsDone;
     try {
       const data = await new CheckInsApi(session).get();
@@ -181,7 +187,7 @@ export class TeammatesView implements vscode.WebviewViewProvider, vscode.Disposa
   /** A new open question: put the view on screen without moving keyboard focus, and say so once. */
   private announce(sessionId: string, data: CheckIns): void {
     const pending = data.pendingCheckInId;
-    if (!pending || this.announced.has(pending)) return;
+    if (!pending || this.announced.has(pending) || this.checkInSending) return;
     this.announced.add(pending);
     // Never yank the thread out from under a candidate who is already in the panel; they will see the dot.
     if (!this.view?.visible && !this.busy) this.selected = CHECK_IN;
@@ -255,10 +261,14 @@ export class TeammatesView implements vscode.WebviewViewProvider, vscode.Disposa
     try {
       let messages: Message[];
       if (request.id === CHECK_IN) {
-        const { sent, reply } = await new CheckInsApi(session).send(text);
-        // A follow-up arrives in the thread the candidate is typing in: already seen, never announced.
+        this.checkInSending = true;
+        const { sent, reply } = await new CheckInsApi(session).send(text).finally(() => { this.checkInSending = false; });
+        if (!this.isCurrent(session.sessionId)) return;
+        // A follow-up's eventId is the new pendingCheckInId. Shown inline in the thread the candidate is in: seen, never
+        // announced. If they left Jordan's thread before it arrived, it stays unread and the poll below announces it.
+        // An ack or a deflect (a message with no open question) leaves nothing pending.
         this.pending = reply?.role === 'follow_up' ? reply.eventId : undefined;
-        if (reply?.role === 'follow_up') for (const seen of [reply.eventId, reply.checkInId]) { this.read.add(seen); this.announced.add(seen); }
+        if (reply?.role === 'follow_up' && this.selected === CHECK_IN && this.view?.visible) { this.read.add(reply.eventId); this.announced.add(reply.eventId); }
         messages = [sent, ...(reply ? [reply] : [])].map(asMessage);
       } else {
         const result = await new TeammatesApi(session).send(request.id, text);
@@ -277,6 +287,7 @@ export class TeammatesView implements vscode.WebviewViewProvider, vscode.Disposa
       if (this.isCurrent(session.sessionId)) {
         this.busy = false;
         this.post({ type: 'busy', sessionId: session.sessionId, value: false });
+        if (request.id === CHECK_IN) void this.poll();
       }
     }
   }

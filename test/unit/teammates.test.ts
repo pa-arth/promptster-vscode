@@ -329,38 +329,152 @@ describe('mid-session check-ins', () => {
     } finally { vi.useRealTimers(); }
   });
 
-  it('sends Jordan replies to the check-in endpoint and does not re-announce an inline follow-up', async () => {
-    vi.spyOn(config, 'readSession').mockReturnValue(session);
-    const followUp = { eventId: 'f1', at: '2026-10-26T10:21:01Z', direction: 'from_reviewer', role: 'follow_up', checkInId: 'q1', text: 'What breaks if a write is dropped?' };
-    let pending: string | null = 'q1';
-    let reply: unknown = followUp;
-    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
-      if (String(url).endsWith('/check-ins/messages')) return ok({ sent: answer, reply });
-      if (String(url).endsWith('/check-ins')) return ok({ reviewer: jordan, messages: [question], pendingCheckInId: pending });
-      return { ok: false, status: 404, json: async () => ({ error: 'not_ticket_flow' }) } as Response;
+  const priya = { id: 'priya', name: 'Priya', role: 'Architect', owns: 'Prior art', avatar: null };
+  const followUp = { eventId: 'f1', at: '2026-10-26T10:21:01Z', direction: 'from_reviewer', role: 'follow_up', checkInId: 'q1', text: 'What breaks if a write is dropped?' };
+  /** Routes: Jordan's GET answers `state.pending`; the POST waits on `state.post` when set. Teammates: priya when `ticketFlow`. */
+  const route = (state: { pending: string | null; reply?: unknown; post?: Promise<Response>; ticketFlow?: boolean; off?: Set<string> }) =>
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async url => {
+      const path = String(url);
+      if (path.endsWith('/check-ins/messages')) return state.post ?? ok({ sent: answer, reply: state.reply ?? null });
+      if (path.endsWith('/check-ins')) return [...(state.off ?? [])].some(id => path.includes(`/sessions/${id}/`))
+        ? { ok: false, status: 404, json: async () => ({ error: 'check_ins_off' }) } as Response
+        : ok({ reviewer: jordan, messages: [question], pendingCheckInId: state.pending });
+      if (!state.ticketFlow) return { ok: false, status: 404, json: async () => ({ error: 'not_ticket_flow' }) } as Response;
+      return ok(path.endsWith('/messages') ? { messages: [] } : { personas: [priya] });
     });
+
+  it('sends Jordan replies to the check-in endpoint and does not re-announce a follow-up shown inline', async () => {
+    vi.spyOn(config, 'readSession').mockReturnValue(session);
+    const state = { pending: 'q1' as string | null, reply: followUp as unknown };
+    const fetch = route(state);
     const notify = vi.spyOn(fake.window, 'showInformationMessage');
     const view = new TeammatesView({ subscriptions: [] } as never);
-    const { posted, send } = mount(view);
+    const { posted, send } = mount(view, true);
     await settle(() => posted.some(m => m.type === 'thread'));
+    state.pending = 'f1'; // backend: the follow-up's own eventId becomes pending
     send({ type: 'send', id: 'checkin', text: 'Two writers.', sessionId: session.sessionId });
     await settle(() => posted.some(m => m.type === 'append'));
+    await settle();
     expect(fetch.mock.calls.some(([url, init]) => String(url).endsWith('/check-ins/messages') && init?.method === 'POST')).toBe(true);
     expect(posted.find(m => m.type === 'append').messages.map((m: any) => m.direction)).toEqual(['to_persona', 'from_persona']);
-    pending = 'f1';
     await view.refresh();
     expect(notify).toHaveBeenCalledTimes(1);
-    reply = null;
-    posted.length = 0;
-    send({ type: 'send', id: 'checkin', text: 'Nothing.', sessionId: session.sessionId });
+    expect(posted.filter(m => m.type === 'personas').at(-1).personas[0].unread).toBe(false);
+    view.dispose();
+  });
+
+  it('handles a message to Jordan with no open question: stored as an answer to itself, deflected', async () => {
+    vi.spyOn(config, 'readSession').mockReturnValue(session);
+    const own = { ...answer, eventId: 'a9', checkInId: 'a9', text: 'Is the API v2?' };
+    const deflect = { eventId: 'd9', at: own.at, direction: 'from_reviewer', role: 'deflect', checkInId: 'a9', text: 'Good question for the ticket or your teammates — I’m just checking in on your approach.' };
+    const state = { pending: null as string | null, post: Promise.resolve(ok({ sent: own, reply: deflect })) };
+    route(state);
+    const notify = vi.spyOn(fake.window, 'showInformationMessage');
+    const view = new TeammatesView({ subscriptions: [] } as never);
+    const { posted, send } = mount(view, true);
+    await settle(() => posted.some(m => m.type === 'thread'));
+    send({ type: 'send', id: 'checkin', text: 'Is the API v2?', sessionId: session.sessionId });
     await settle(() => posted.some(m => m.type === 'append'));
-    expect(posted.find(m => m.type === 'append').messages).toHaveLength(1);
+    await settle();
+    expect(posted.find(m => m.type === 'append').messages.map((m: any) => [m.direction, m.text])).toEqual([['to_persona', own.text], ['from_persona', deflect.text]]);
+    expect(notify).not.toHaveBeenCalled();
+    expect(posted.filter(m => m.type === 'personas').at(-1).personas[0].unread).toBe(false);
+    view.dispose();
+  });
+
+  it('keeps a follow-up unread and announces it when the candidate left Jordan before it arrived', async () => {
+    vi.spyOn(config, 'readSession').mockReturnValue(session);
+    let finish!: (r: Response) => void;
+    const state = { pending: null as string | null, ticketFlow: true, post: new Promise<Response>(r => { finish = r; }) };
+    route(state);
+    const notify = vi.spyOn(fake.window, 'showInformationMessage');
+    const view = new TeammatesView({ subscriptions: [] } as never);
+    const { posted, send } = mount(view, true);
+    await settle(() => posted.some(m => m.type === 'thread'));
+    send({ type: 'send', id: 'checkin', text: 'Two writers.', sessionId: session.sessionId });
+    await settle(() => posted.some(m => m.type === 'busy' && m.value));
+    send({ type: 'select', id: 'priya', sessionId: session.sessionId });
+    await settle(() => posted.some(m => m.type === 'thread' && m.id === 'priya'));
+    state.pending = 'f1';
+    finish(ok({ sent: answer, reply: followUp }));
+    await settle(() => notify.mock.calls.length > 0);
+    expect(notify).toHaveBeenCalledWith('Jordan checked in', 'Open');
+    expect(posted.filter(m => m.type === 'personas').at(-1).personas[0]).toMatchObject({ id: 'checkin', unread: true });
+    view.dispose();
+  });
+
+  it('ignores a check-in reply that lands after a session switch', async () => {
+    let current = session;
+    vi.spyOn(config, 'readSession').mockImplementation(() => current);
+    let finish!: (r: Response) => void;
+    const state = { pending: 'q1' as string | null, post: new Promise<Response>(r => { finish = r; }) };
+    route(state);
+    const view = new TeammatesView({ subscriptions: [] } as never);
+    const { posted, send } = mount(view); // hidden, so nothing marks session-2's question read
+    await settle(() => posted.some(m => m.type === 'thread'));
+    send({ type: 'send', id: 'checkin', text: 'Two writers.', sessionId: session.sessionId });
+    await settle(() => posted.some(m => m.type === 'busy' && m.value));
+    current = { ...session, sessionId: 'session-2' };
+    state.pending = 'q2';
+    await view.refresh();
+    posted.length = 0;
+    finish(ok({ sent: answer, reply: ack }));
+    await settle();
+    // The old session's ack must not clear session-2's open question (no roster re-post, no append).
+    expect(posted.filter(m => m.type === 'personas' || m.type === 'append')).toEqual([]);
+    send({ type: 'select', id: 'checkin', sessionId: 'session-2' });
+    await settle(() => posted.some(m => m.type === 'personas'));
+    expect(posted.find(m => m.type === 'personas')).toMatchObject({ sessionId: 'session-2', personas: [{ id: 'checkin', unread: true }] });
+    view.dispose();
+  });
+
+  it('defers a poll announcement while a reply to Jordan is in flight', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    try {
+      vi.spyOn(config, 'readSession').mockReturnValue(session);
+      let finish!: (r: Response) => void;
+      const state = { pending: 'q1' as string | null, post: new Promise<Response>(r => { finish = r; }) };
+      route(state);
+      const notify = vi.spyOn(fake.window, 'showInformationMessage');
+      const view = new TeammatesView({ subscriptions: [] } as never);
+      const { posted, send } = mount(view, true);
+      await settle(() => posted.some(m => m.type === 'thread'));
+      expect(notify).toHaveBeenCalledTimes(1);
+      send({ type: 'send', id: 'checkin', text: 'Two writers.', sessionId: session.sessionId });
+      await settle(() => posted.some(m => m.type === 'busy' && m.value));
+      state.pending = 'f1'; // the server saved the follow-up before the POST answered
+      await vi.advanceTimersByTimeAsync(30_000);
+      await settle();
+      expect(notify).toHaveBeenCalledTimes(1);
+      finish(ok({ sent: answer, reply: followUp }));
+      await settle(() => posted.some(m => m.type === 'append'));
+      await settle();
+      expect(notify).toHaveBeenCalledTimes(1);
+      view.dispose();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('asks again when the candidate returns to a session whose check-ins were off', async () => {
+    let current = session;
+    vi.spyOn(config, 'readSession').mockImplementation(() => current);
+    const state = { pending: null as string | null, off: new Set([encodeURIComponent(session.sessionId)]) };
+    route(state);
+    const view = new TeammatesView({ subscriptions: [] } as never);
+    const { posted } = mount(view, true);
+    await settle();
+    expect(posted.some(m => m.type === 'personas')).toBe(false);
+    current = { ...session, sessionId: 'session-2' };
+    await view.refresh();
+    state.off.clear();
+    current = session;
+    await view.refresh();
+    await settle();
+    expect(posted.filter(m => m.type === 'personas').at(-1)).toMatchObject({ sessionId: session.sessionId, personas: [{ id: 'checkin' }] });
     view.dispose();
   });
 
   it('puts Jordan first beside ticket-flow teammates', async () => {
     vi.spyOn(config, 'readSession').mockReturnValue(session);
-    const priya = { id: 'priya', name: 'Priya', role: 'Architect', owns: 'Prior art', avatar: null };
     vi.spyOn(globalThis, 'fetch').mockImplementation(async url => String(url).includes('/check-ins')
       ? ok({ reviewer: jordan, messages: [], pendingCheckInId: null })
       : ok(String(url).endsWith('/messages') ? { messages: [] } : { personas: [priya] }));
