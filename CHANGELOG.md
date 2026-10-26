@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Mid-session check-ins (openspec `mid-session-check-ins`, tasks 2.1–2.3)
+When the hiring team turns check-ins on, Jordan (engineering lead) appears first
+in the Teammates view, on every hosted session — ticket-flow or not (on a
+non-ticket-flow session Jordan is the only person). The view polls
+`GET /v1/sessions/:id/check-ins` every 30s and stops on `check_ins_off` or 401
+until the session changes. A new open question reveals the view without taking
+keyboard focus (`WebviewView.show(true)`, or `promptster.teammates.focus` with
+`{ preserveFocus: true }` when the view was never resolved), selects Jordan
+unless the candidate is already in the panel, puts an unread dot on Jordan, and
+shows a non-modal "Jordan checked in" notification with an Open action. Replies
+to Jordan post to `/check-ins/messages`.
+
 ## 0.3.13
 
 ### The Assessment view appears on hosted boxes
