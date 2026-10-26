@@ -51,8 +51,10 @@ export class CheckInsApi {
 /** Jordan's slot in the roster. Fixed, so it can never collide with a ticket-flow persona's thread. */
 const CHECK_IN = 'checkin';
 const POLL_MS = 30_000;
+/** Check-ins can be switched on mid-session, so "off" is asked again this often. A dead key is not. */
+const RECHECK_OFF_MS = 5 * 60_000;
 const asMessage = (m: CheckInMessage): Message => ({ eventId: m.eventId, at: m.at, direction: m.direction === 'to_reviewer' ? 'to_persona' : 'from_persona', kind: 'message', text: m.text });
-/** Check-ins are off for the assessment, or the key is dead: stop asking until the session changes. */
+/** Check-ins are off for the assessment (re-asked every RECHECK_OFF_MS), or the key is dead (stop until the session changes). */
 const checkInsStopped = (error: unknown) => error instanceof TeammatesError && (error.code === 'check_ins_off' || error.status === 401);
 type Settled<T> = { ok: T } | { error: unknown };
 const settle = <T>(promise: Promise<T>): Promise<Settled<T>> => promise.then(ok => ({ ok }), (error: unknown) => ({ error }));
@@ -69,6 +71,8 @@ export class TeammatesView implements vscode.WebviewViewProvider, vscode.Disposa
   private sendsDone = 0;
   private nonTicketFlowSessionId?: string;
   private checkInsOffSessionId?: string;
+  /** When the server last said check-ins are off; 0 when the stop was a 401, which never re-checks. */
+  private checkInsOffSince = 0;
   private currentSessionId?: string;
   /** The open check-in question, and the ones the candidate has already had on screen (the unread dot). */
   private pending?: string;
@@ -127,7 +131,7 @@ export class TeammatesView implements vscode.WebviewViewProvider, vscode.Disposa
     } else if ('error' in team) failure = team.error;
     else { this.nonTicketFlowSessionId = undefined; teammates = team.ok.personas; }
     if (!checkIns || ('error' in checkIns && checkInsStopped(checkIns.error))) {
-      this.checkInsOffSessionId = id;
+      if (checkIns && 'error' in checkIns) this.stopCheckIns(id, checkIns.error);
       reviewer = undefined;
       this.pending = undefined;
       if (checkIns && 'error' in checkIns && (checkIns.error as TeammatesError).status === 401) failure ??= checkIns.error;
@@ -163,7 +167,11 @@ export class TeammatesView implements vscode.WebviewViewProvider, vscode.Disposa
     const session = readSession();
     if (!session) return;
     if (session.sessionId !== this.currentSessionId) return this.refresh();
-    if (session.sessionId === this.checkInsOffSessionId) return;
+    if (session.sessionId === this.checkInsOffSessionId) {
+      if (!this.checkInsOffSince || Date.now() - this.checkInsOffSince < RECHECK_OFF_MS) return;
+      this.checkInsOffSessionId = undefined;
+      return this.refresh();
+    }
     if (!this.personas.some(p => p.id === CHECK_IN)) return this.refresh();
     const sendsBefore = this.sendsDone;
     try {
@@ -179,9 +187,14 @@ export class TeammatesView implements vscode.WebviewViewProvider, vscode.Disposa
       this.postPersonas(session.sessionId);
     } catch (error) {
       if (!this.isCurrent(session.sessionId) || !checkInsStopped(error)) return;
-      this.checkInsOffSessionId = session.sessionId;
+      this.stopCheckIns(session.sessionId, error);
       void this.refresh(); // drops Jordan from the roster
     }
+  }
+
+  private stopCheckIns(sessionId: string, error: unknown): void {
+    this.checkInsOffSessionId = sessionId;
+    this.checkInsOffSince = error instanceof TeammatesError && error.code === 'check_ins_off' ? Date.now() : 0;
   }
 
   /** A new open question: put the view on screen without moving keyboard focus, and say so once. */

@@ -2,6 +2,11 @@
 
 ## 0.3.14
 
+### Check-ins switched on mid-session arrive
+While an assessment's check-ins are off, the view re-asks every 5 minutes instead of
+stopping for the session, so a recruiter who turns them on mid-session still reaches
+the candidate. A 401 still stops until the session changes.
+
 ### Mid-session check-ins (openspec `mid-session-check-ins`, tasks 2.1–2.3)
 When the hiring team turns check-ins on, Jordan (engineering lead) appears first
 in the Teammates view, on every hosted session — ticket-flow or not (on a
