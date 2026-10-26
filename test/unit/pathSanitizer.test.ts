@@ -100,6 +100,22 @@ describe('sanitizePath', () => {
       expect(sanitizePath('/workspace/apps/api/node_modules/foo.js')).toBeNull();
     });
 
+    it('filters tool caches a test run writes, not candidate files that merely look similar', () => {
+      for (const p of [
+        '.pytest_cache/v/cache/nodeids',
+        '.pytest_cache/README.md',
+        'src/pkg/__pycache__/mod.cpython-311.pyc',
+        '.mypy_cache/3.11/mod.json',
+        '.ruff_cache/0.6.0/123',
+        '.venv/lib/python3.11/site-packages/x.py',
+        'web/.next/cache/a.json',
+        'pkg/mod.pyc',
+      ]) expect(sanitizePath(`/workspace/${p}`)).toBeNull();
+      expect(sanitizePath('/workspace/src/pytest_cache_helper.py')).toBe('src/pytest_cache_helper.py');
+      expect(sanitizePath('/workspace/src/cache/store.ts')).toBe('src/cache/store.ts');
+      expect(sanitizePath('/workspace/src/venv_utils.py')).toBe('src/venv_utils.py');
+    });
+
     it('filters .git internals', () => {
       expect(sanitizePath('/workspace/.git/HEAD')).toBeNull();
     });

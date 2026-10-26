@@ -10,6 +10,22 @@ credentials*
 # Dependencies and build artifacts
 node_modules/
 .git/
+.pytest_cache/
+__pycache__/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.venv/
+venv/
+.cache/
+.turbo/
+.next/
+.nyc_output/
+.gradle/
+*.pyc
+*.pyo
 dist/
 build/
 out/

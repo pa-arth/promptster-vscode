@@ -13,7 +13,7 @@ import { TimeLeft } from './ui/timeLeft';
 import { Budget } from './ui/budget';
 import { registerCommands } from './ui/commands';
 import { TeammatesView } from './ui/teammates';
-import { AssessmentView } from './ui/assessment';
+import { AssessmentView, openTaskMd } from './ui/assessment';
 import { loadIgnorePatterns } from './utils/pathSanitizer';
 import { log, logError } from './utils/logger';
 import type { PromptsterSession } from './types';
@@ -264,6 +264,17 @@ async function launchHostedAgent(session: PromptsterSession): Promise<void> {
     await vscode.commands.executeCommand('workbench.view.extension.promptster');
   } catch (error) {
     log(`Could not reveal the assessment sidebar: ${String(error)}`);
+  }
+  // The candidate's first view is their task, not an empty editor (provisioning
+  // sets `workbench.startupEditor: none` so code-server's Welcome tab cannot
+  // claim it first). Once per session, behind the same `agentLaunched` latch.
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (root) {
+    try {
+      await openTaskMd(root);
+    } catch (error) {
+      log(`Could not open TASK.md: ${String(error)}`);
+    }
   }
   const tool = command === 'claude' ? 'claude' : 'codex';
   const terminal = vscode.window.createTerminal({ name: 'Promptster Assessment', env: { PROMPTSTER_TERMINAL_SESSION_ID: session.sessionId, PROMPTSTER_TERMINAL_TOOL: tool } });

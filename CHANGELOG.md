@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.3.13
+
+### The Assessment view appears on hosted boxes
+The Assessment sidebar ("Review & submit") was gated on an `assessment.json`
+in the workspace root, and nothing in the hosted lane writes one — not
+provisioning, not ARM, not `promptster start --seeded`. So
+`promptster.assessmentWorkspace` was false on every hosted box and candidates
+could only submit with `promptster done` in a terminal. On a hosted session the
+view now takes its title and problem key from the ARM-written session
+(`assessmentTitle`, `issueId`), and uses a lone root-level `<key>.spec` as the
+handoff when a ticket-flow stub is present. Without a spec, "Open ticket" reads
+"Open task" and opens TASK.md; the handoff button is hidden. Laptop sessions
+are unchanged.
+
+### TASK.md is the first thing a hosted candidate sees
+When the hosted agent terminal launches (once per session), TASK.md opens in the
+rendered markdown preview. Provisioning now sets `workbench.startupEditor:
+none`, so code-server's Welcome tab no longer claims the editor first.
+
+### Tool caches are not file activity
+`.pytest_cache/`, `__pycache__/`, `.mypy_cache/`, `.ruff_cache/`, `.hypothesis/`,
+`.tox/`, `.nox/`, `.venv/`, `venv/`, `.cache/`, `.turbo/`, `.next/`,
+`.nyc_output/`, `.gradle/` and `*.pyc`/`*.pyo` are now default-ignored. A
+single `pytest` run produced a burst of `file_create` events for
+`.pytest_cache` files the candidate never made.
+
 ## 0.3.12
 
 ### Agent writes are no longer candidate edits
