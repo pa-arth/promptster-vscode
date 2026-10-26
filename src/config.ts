@@ -97,6 +97,8 @@ export function fromJson(
     deadlineAt: deadline(raw.startedAt, raw.timeLimitMinutes),
     tools: tools(raw.tools),
     hosted: raw.noSelfEvict === true,
+    assessmentTitle: str(raw.assessmentTitle),
+    issueId: str(raw.issueId),
     sourceFile,
   };
 }

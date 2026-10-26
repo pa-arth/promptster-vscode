@@ -126,6 +126,10 @@ export interface PromptsterSession extends PromptsterConfig {
   tools: Array<'claude' | 'codex'>;
   /** Seeded sessions run in a Promptster-owned hosted box. */
   hosted: boolean;
+  /** `assessmentTitle` as ARM wrote it. Names the Assessment view on a hosted box. */
+  assessmentTitle?: string;
+  /** `issueId` as ARM wrote it — the problem key shown above the title. */
+  issueId?: string;
   /** Which file the session state was read from, for diagnostics. */
   sourceFile: string;
 }
