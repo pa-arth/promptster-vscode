@@ -329,6 +329,37 @@ describe('mid-session check-ins', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it('re-asks an off assessment every 5 minutes, so check-ins switched on mid-session arrive; a 401 stays stopped', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    try {
+      vi.spyOn(config, 'readSession').mockReturnValue(session);
+      let checkIns: Response = checkInsOff;
+      const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async url => String(url).includes('/check-ins') ? checkIns : { ok: false, status: 404, json: async () => ({ error: 'not_ticket_flow' }) } as Response);
+      const notify = vi.spyOn(fake.window, 'showInformationMessage');
+      const view = new TeammatesView({ subscriptions: [] } as never);
+      const { posted } = mount(view, true);
+      await settle();
+      const calls = () => fetch.mock.calls.filter(([url]) => String(url).endsWith('/check-ins')).length;
+      const first = calls();
+      await vi.advanceTimersByTimeAsync(4 * 60_000);
+      expect(calls()).toBe(first);
+      // The recruiter turns check-ins on; the next re-check finds a due question.
+      checkIns = ok({ reviewer: jordan, messages: [question], pendingCheckInId: 'q1' });
+      await vi.advanceTimersByTimeAsync(60_000);
+      await settle(() => posted.some(m => m.type === 'personas'));
+      expect(calls()).toBeGreaterThan(first);
+      expect(notify).toHaveBeenCalledTimes(1);
+      // A dead key is not re-asked.
+      checkIns = { ok: false, status: 401, json: async () => ({ error: 'unauthorized' }) } as Response;
+      await vi.advanceTimersByTimeAsync(30_000);
+      await settle();
+      const stopped = calls();
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(calls()).toBe(stopped);
+      view.dispose();
+    } finally { vi.useRealTimers(); }
+  });
+
   const priya = { id: 'priya', name: 'Priya', role: 'Architect', owns: 'Prior art', avatar: null };
   const followUp = { eventId: 'f1', at: '2026-10-26T10:21:01Z', direction: 'from_reviewer', role: 'follow_up', checkInId: 'q1', text: 'What breaks if a write is dropped?' };
   /** Routes: Jordan's GET answers `state.pending`; the POST waits on `state.post` when set. Teammates: priya when `ticketFlow`. */
