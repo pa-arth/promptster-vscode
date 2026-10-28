@@ -38,7 +38,7 @@ export function activate(context: vscode.ExtensionContext): void {
   log('Promptster extension activating');
 
   statusBar = new StatusBarManager();
-  store = new SessionStore(context.globalState);
+  store = new SessionStore(context.globalState, () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
   extensionVersion = context.extension?.packageJSON?.version ?? 'unknown';
   timeLeft = new TimeLeft();
   budget = new Budget();
@@ -209,14 +209,13 @@ async function startCapture(
 
     // Exactly once per session, not once per attach. A reload that re-emitted
     // session_start would put a second start on the candidate's timeline.
-    if (!persisted.sessionStartEmitted) {
+    if (await store.claim(session.sessionId, 'sessionStartEmitted')) {
       transport.enqueue(
         factory.create('session_start', {
           editorVersion: vscode.version,
           extensionVersion,
         }),
       );
-      await store.update(session.sessionId, { sessionStartEmitted: true });
     } else {
       log('session_start already recorded for this session — reattach, not a new start');
     }
@@ -232,7 +231,7 @@ async function startCapture(
 }
 
 async function launchHostedAgent(session: PromptsterSession): Promise<void> {
-  if (!session.hosted || store.read(session.sessionId).agentLaunched) return;
+  if (!session.hosted) return;
 
   const command = session.tools.includes('claude')
     ? 'claude'
@@ -244,9 +243,9 @@ async function launchHostedAgent(session: PromptsterSession): Promise<void> {
     return;
   }
 
-  // Persist before launching so an extension-host reload cannot create a
-  // second interactive agent beside the first one.
-  await store.update(session.sessionId, { agentLaunched: true });
+  // Claimed before launching, on disk, so neither a reload nor a second
+  // browser or window can create another interactive agent beside the first.
+  if (!(await store.claim(session.sessionId, 'agentLaunched'))) return;
   // code-server currently opens its generic Copilot/Agent secondary sidebar by
   // default. It is unrelated to the recruiter-selected, Promptster-authenticated
   // agent below and makes the candidate choose between two apparently competing
