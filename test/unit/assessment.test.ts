@@ -119,6 +119,17 @@ describe('native assessment actions',()=>{
     expect(restored.sendText).not.toHaveBeenCalled();
     expect(state.terminals).toHaveLength(0);
   });
+  it('launches nothing if the session ended during the restore wait', async () => {
+    const instance = view();
+    let finish!: () => void;
+    instance.awaitRestore(new Promise<void>(resolve => { finish = resolve; }));
+    const click = receive({ action: 'tool', tool: 'codex', sessionId: 's1' });
+    vi.spyOn(config, 'readSession').mockReturnValue({ ...session, expiresAt: '2020-01-01T00:00:00Z' });
+    finish();
+    await click;
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(state.terminals).toHaveLength(0);
+  });
   it('rejects unassigned tools, shell text and stale session messages',async()=>{view();await receive({action:'tool',tool:'claude',sessionId:'s1'});await receive({action:'tool',tool:'codex; bad-command',sessionId:'s1'});await receive({action:'tool',tool:'codex',sessionId:'previous'});expect(state.terminals).toHaveLength(0)});
   it('rechecks consent and expiry when an action arrives',async()=>{view();vi.spyOn(config,'readSession').mockReturnValue({...session,consentAccepted:false});await receive({action:'tool',tool:'codex',sessionId:'s1'});vi.spyOn(config,'readSession').mockReturnValue({...session,expiresAt:'2020-01-01T00:00:00Z'});await receive({action:'tool',tool:'codex',sessionId:'s1'});expect(state.terminals).toHaveLength(0)});
   it('does not launch without an assessment workspace',async()=>{rmSync(join(root,'assessment.json'));view();await receive({action:'tool',tool:'codex',sessionId:'s1'});expect(state.terminals).toHaveLength(0)});

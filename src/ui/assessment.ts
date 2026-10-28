@@ -154,7 +154,10 @@ export class AssessmentView implements vscode.WebviewViewProvider {
         let terminal = this.terminals.get(key) ?? findAgentTerminal(session, tool);
         if (!terminal && this.pendingRestore) {
           await this.pendingRestore;
-          terminal = this.terminals.get(key) ?? findAgentTerminal(session, tool);
+          // The wait can be long enough for the session to end or change.
+          const current = readSession();
+          if (!current || current.sessionId !== session.sessionId || !current.consentAccepted || isExpired(current) || !current.tools.includes(tool)) return;
+          terminal = this.terminals.get(key) ?? findAgentTerminal(current, tool);
         }
         if (!terminal) {
           terminal = vscode.window.createTerminal({ name: TOOL_NAMES[tool], cwd: root, env: { PROMPTSTER_TERMINAL_SESSION_ID: session.sessionId, PROMPTSTER_TERMINAL_TOOL: tool } });
