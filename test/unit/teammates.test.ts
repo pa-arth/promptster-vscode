@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import * as config from '../../src/config';
 import { fromJson } from '../../src/config';
 
@@ -25,10 +26,13 @@ describe('Teammates API', () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ threadId: 'priya', sent, reply: away }) } as Response);
     const result = await new TeammatesApi(session).send('priya', ' Question ');
     expect(fetch).toHaveBeenCalledWith('https://api.example.test/v1/sessions/session%201/teammates/priya/messages', expect.objectContaining({
-      method: 'POST', headers: { 'X-API-Key': 'PST-test', 'Content-Type': 'application/json' }, body: JSON.stringify({ text: ' Question ' }),
+      method: 'POST', headers: { 'X-API-Key': 'PST-test', 'Content-Type': 'application/json', 'Content-Encoding': 'gzip' },
     }));
     expect(result.reply.kind).toBe('away');
     expect(result.reply.text).toBe(away.text);
+    // Gzipped so Render's WAF can't read it; the API inflates it.
+    const body = fetch.mock.calls[0]![1]!.body as Buffer;
+    expect(JSON.parse(gunzipSync(body).toString())).toEqual({ text: ' Question ' });
   });
 
   it('reads the persisted thread without manufacturing an answer', async () => {
@@ -254,9 +258,10 @@ describe('mid-session check-ins', () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok({ sent: answer, reply: null }));
     const result = await new CheckInsApi(session).send('Two writers.');
     expect(fetch).toHaveBeenCalledWith('https://api.example.test/v1/sessions/session%201/check-ins/messages', expect.objectContaining({
-      method: 'POST', headers: { 'X-API-Key': 'PST-test', 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'Two writers.' }),
+      method: 'POST', headers: { 'X-API-Key': 'PST-test', 'Content-Type': 'application/json', 'Content-Encoding': 'gzip' },
     }));
     expect(result.reply).toBeNull();
+    expect(JSON.parse(gunzipSync(fetch.mock.calls[0]![1]!.body as Buffer).toString())).toEqual({ text: 'Two writers.' });
     await new CheckInsApi(session).get();
     expect(fetch).toHaveBeenLastCalledWith('https://api.example.test/v1/sessions/session%201/check-ins', expect.objectContaining({ method: 'GET' }));
   });
