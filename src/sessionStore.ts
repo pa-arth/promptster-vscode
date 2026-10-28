@@ -69,28 +69,48 @@ export class SessionStore {
    * the memento.
    */
   async claim(sessionId: string, latch: SessionLatch): Promise<boolean> {
-    if (this.read(sessionId)[latch]) return false;
     const root = this.workspaceRoot();
-    if (root) {
-      const marker = path.join(root, LATCH_DIR, `${sessionId}.${latch}`);
-      try {
-        fs.mkdirSync(path.dirname(marker), { recursive: true });
-        fs.writeFileSync(marker, new Date().toISOString(), { flag: 'wx' });
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
-          await this.update(sessionId, { [latch]: true });
-          return false;
-        }
-        // An unwritable workspace must not cost the candidate their agent;
-        // the memento still guards a plain reload.
-      }
+    const marker = root ? path.join(root, LATCH_DIR, `${sessionId}.${latch}`) : undefined;
+    if (this.read(sessionId)[latch]) {
+      // Set by a build that kept latches in the browser only: write the marker
+      // now, or the next browser to attach finds nothing and fires again.
+      if (marker) createMarker(marker);
+      return false;
     }
-    await this.update(sessionId, { [latch]: true });
+    if (marker && createMarker(marker) === 'exists') {
+      await this.remember(sessionId, latch);
+      return false;
+    }
+    // The claim is won. Remembering it in the browser too is best-effort: a
+    // failed write must not cancel the action the marker already reserved.
+    await this.remember(sessionId, latch);
     return true;
+  }
+
+  private async remember(sessionId: string, latch: SessionLatch): Promise<void> {
+    try {
+      await this.update(sessionId, { [latch]: true });
+    } catch {
+      // The marker on disk is the record that matters across browsers.
+    }
   }
 
   async update(sessionId: string, patch: Partial<SessionCaptureState>): Promise<void> {
     const next = { ...this.read(sessionId), ...patch };
     await this.memento.update(this.key(sessionId), next);
+  }
+}
+
+/**
+ * Exclusive create. 'error' (an unwritable workspace) counts as a win for the
+ * caller: losing the candidate's agent is worse than a possible duplicate.
+ */
+function createMarker(marker: string): 'created' | 'exists' | 'error' {
+  try {
+    fs.mkdirSync(path.dirname(marker), { recursive: true });
+    fs.writeFileSync(marker, new Date().toISOString(), { flag: 'wx' });
+    return 'created';
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EEXIST' ? 'exists' : 'error';
   }
 }

@@ -47,4 +47,16 @@ describe('SessionStore.claim', () => {
     expect(await store.claim('s1', 'agentLaunched')).toBe(true);
     expect(await store.claim('s1', 'agentLaunched')).toBe(false);
   });
+  it('backfills the marker for a latch an older build kept in the browser only', async () => {
+    const upgradedBrowser = memento();
+    await new SessionStore(upgradedBrowser).update('s1', { agentLaunched: true });
+    expect(await new SessionStore(upgradedBrowser, () => root).claim('s1', 'agentLaunched')).toBe(false);
+    expect(await new SessionStore(memento(), () => root).claim('s1', 'agentLaunched')).toBe(false);
+  });
+
+  it('keeps a won claim when the browser-state write fails', async () => {
+    const broken = { get: () => undefined, keys: () => [], update: async () => { throw new Error('quota'); } } as never;
+    expect(await new SessionStore(broken, () => root).claim('s1', 'agentLaunched')).toBe(true);
+    expect(await new SessionStore(memento(), () => root).claim('s1', 'agentLaunched')).toBe(false);
+  });
 });
