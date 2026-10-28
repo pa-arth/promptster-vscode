@@ -10,6 +10,30 @@ import type { PromptsterSession } from '../types';
 interface WorkspaceBrief { id: string; title: string; specFile?: string }
 const SPEC_FILE = /^[a-zA-Z0-9_-]+\.spec$/;
 const TOOL_NAMES = { claude: 'Claude Code', codex: 'Codex' } as const;
+/** The terminal the hosted auto-launch opens (src/extension.ts). */
+export const AUTO_TERMINAL_NAME = 'Promptster Assessment';
+
+/**
+ * The session's live agent terminal for `tool`, if one exists in this window.
+ *
+ * A terminal created in this window carries its session and tool in
+ * `creationOptions.env`. One RESTORED into a new window (the candidate reopened
+ * the box from another browser) comes back with its name but without that env,
+ * so it is matched by name: the view's per-tool name, or the auto-launch's,
+ * which always runs the session's preferred tool. Missing it here meant the
+ * button started a second agent beside the restored one.
+ */
+export function findAgentTerminal(sessionId: string, tools: readonly string[], tool: 'claude' | 'codex'): vscode.Terminal | undefined {
+  const autoTool = tools.includes('claude') ? 'claude' : 'codex';
+  return vscode.window.terminals?.find(candidate => {
+    if (candidate.exitStatus) return false;
+    const env = (candidate.creationOptions as vscode.TerminalOptions | undefined)?.env;
+    if (env?.PROMPTSTER_TERMINAL_SESSION_ID) {
+      return env.PROMPTSTER_TERMINAL_SESSION_ID === sessionId && env.PROMPTSTER_TERMINAL_TOOL === tool;
+    }
+    return candidate.name === TOOL_NAMES[tool] || (candidate.name === AUTO_TERMINAL_NAME && tool === autoTool);
+  });
+}
 
 export function parseWorkspaceBrief(raw: unknown): WorkspaceBrief | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -113,10 +137,7 @@ export class AssessmentView implements vscode.WebviewViewProvider {
         const tool = request.tool;
         if ((tool !== 'claude' && tool !== 'codex') || !session.tools.includes(tool)) return;
         const key = `${session.sessionId}:${tool}`;
-        let terminal = this.terminals.get(key) ?? vscode.window.terminals?.find(candidate => {
-          const env = (candidate.creationOptions as vscode.TerminalOptions).env;
-          return env?.PROMPTSTER_TERMINAL_SESSION_ID === session.sessionId && env?.PROMPTSTER_TERMINAL_TOOL === tool;
-        });
+        let terminal = this.terminals.get(key) ?? findAgentTerminal(session.sessionId, session.tools, tool);
         if (!terminal) {
           terminal = vscode.window.createTerminal({ name: TOOL_NAMES[tool], cwd: root, env: { PROMPTSTER_TERMINAL_SESSION_ID: session.sessionId, PROMPTSTER_TERMINAL_TOOL: tool } });
           this.terminals.set(key, terminal);

@@ -198,6 +198,28 @@ describe('session lifecycle', () => {
       expect(state.terminals).toHaveLength(1);
     });
 
+    it('a second browser launches nothing and shows the agent terminal restored into it', async () => {
+      writeSessionFile(root, { key: undefined, noSelfEvict: true, tools: ['claude'] });
+      const first = await loadExtension();
+      await activateExtension(first);
+      expect(state.terminals).toHaveLength(1);
+
+      // Another browser: a fresh globalState (IndexedDB) on the same box, and the
+      // terminal comes back restored, with its name but no creation env.
+      const restored = { name: 'Promptster Assessment', creationOptions: {}, show: vi.fn(), sendText: vi.fn() };
+      const second = await reloadExtension(first);
+      // The reloaded extension gets its own instance of the mocked module.
+      const window = (await import('vscode')).window as unknown as { terminals?: unknown[] };
+      window.terminals = [restored];
+      try {
+        memento = new FakeMemento();
+        await activateExtension(second);
+        expect(state.terminals).toHaveLength(1);
+        expect(restored.sendText).not.toHaveBeenCalled();
+        expect(restored.show).toHaveBeenCalledWith(false);
+      } finally { delete window.terminals; }
+    });
+
     it('keeps capture and Codex available when an optional sidebar command fails', async () => {
       writeSessionFile(root, { noSelfEvict: true, tools: ['codex'] });
       commands.registered.set('workbench.action.closeAuxiliaryBar', () => { throw new Error('unsupported layout'); });

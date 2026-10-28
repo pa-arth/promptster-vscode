@@ -73,6 +73,28 @@ describe('native assessment actions',()=>{
       if (previous[1] === undefined) delete workspace.saveAll; else workspace.saveAll = previous[1];
     }
   });
+  it('focuses an agent terminal restored into a new window, which has its name but not its env', async () => {
+    const window = vscode.window as unknown as { terminals?: unknown[] };
+    const restored = { name: 'Promptster Assessment', creationOptions: {}, show: vi.fn(), sendText: vi.fn() };
+    window.terminals = [restored];
+    try {
+      view(); await receive({ action: 'tool', tool: 'codex', sessionId: 's1' });
+      expect(restored.show).toHaveBeenCalledOnce();
+      expect(restored.sendText).not.toHaveBeenCalled();
+      expect(state.terminals).toHaveLength(0);
+    } finally { delete window.terminals; }
+  });
+  it('does not take the auto-launch terminal for a tool it never ran', async () => {
+    const window = vscode.window as unknown as { terminals?: unknown[] };
+    const restored = { name: 'Promptster Assessment', creationOptions: {}, show: vi.fn(), sendText: vi.fn() };
+    window.terminals = [restored];
+    vi.spyOn(config, 'readSession').mockReturnValue({ ...session, tools: ['claude', 'codex'] });
+    try {
+      view(); await receive({ action: 'tool', tool: 'codex', sessionId: 's1' });
+      expect(restored.show).not.toHaveBeenCalled();
+      expect(state.terminals).toEqual([{ name: 'Codex', shown: true, commands: ['promptster codex'] }]);
+    } finally { delete window.terminals; }
+  });
   it('rejects unassigned tools, shell text and stale session messages',async()=>{view();await receive({action:'tool',tool:'claude',sessionId:'s1'});await receive({action:'tool',tool:'codex; bad-command',sessionId:'s1'});await receive({action:'tool',tool:'codex',sessionId:'previous'});expect(state.terminals).toHaveLength(0)});
   it('rechecks consent and expiry when an action arrives',async()=>{view();vi.spyOn(config,'readSession').mockReturnValue({...session,consentAccepted:false});await receive({action:'tool',tool:'codex',sessionId:'s1'});vi.spyOn(config,'readSession').mockReturnValue({...session,expiresAt:'2020-01-01T00:00:00Z'});await receive({action:'tool',tool:'codex',sessionId:'s1'});expect(state.terminals).toHaveLength(0)});
   it('does not launch without an assessment workspace',async()=>{rmSync(join(root,'assessment.json'));view();await receive({action:'tool',tool:'codex',sessionId:'s1'});expect(state.terminals).toHaveLength(0)});
