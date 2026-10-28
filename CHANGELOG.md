@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.15
+
+### One agent terminal per session, whatever the browser
+Reopening a hosted box from another browser, an incognito window or after
+clearing site data launched another Claude Code terminal and re-sent
+`session_start`. The once-per-session latches lived only in `globalState`,
+which code-server keeps in the browser's IndexedDB, not on the box. Found on a
+live 1.13.1 box (session d35c34cc): two reopens left three *Promptster
+Assessment* terminals and four `session_start` events. Both latches are now
+claimed by exclusively creating `.promptster/editor-latches/<session>.<latch>`
+in the workspace, which every window shares and which is atomic across the
+separate extension host each window gets. A session already latched by an
+older build gets its marker on the next attach, and a failed browser-state
+write no longer cancels a won claim.
+
 ## 0.3.14
 
 ### Check-ins switched on mid-session arrive
