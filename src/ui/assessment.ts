@@ -19,11 +19,15 @@ export const AUTO_TERMINAL_NAME = 'Promptster Assessment';
  * A terminal created in this window carries its session and tool in
  * `creationOptions.env`. One RESTORED into a new window (the candidate reopened
  * the box from another browser) comes back with its name but without that env,
- * so it is matched by name: the view's per-tool name, or the auto-launch's,
- * which always runs the session's preferred tool. Missing it here meant the
- * button started a second agent beside the restored one.
+ * so on a HOSTED session it is matched by name: the view's per-tool name, or
+ * the auto-launch's, which always runs the session's preferred tool. Missing it
+ * meant the button started a second agent beside the restored one. A hosted box
+ * only ever holds one session, so a name cannot belong to another; a local
+ * editor can switch sessions with old terminals still open, so it never
+ * matches by name.
  */
-export function findAgentTerminal(sessionId: string, tools: readonly string[], tool: 'claude' | 'codex'): vscode.Terminal | undefined {
+export function findAgentTerminal(session: Pick<PromptsterSession, 'sessionId' | 'tools' | 'hosted'>, tool: 'claude' | 'codex'): vscode.Terminal | undefined {
+  const { sessionId, tools } = session;
   const autoTool = tools.includes('claude') ? 'claude' : 'codex';
   return vscode.window.terminals?.find(candidate => {
     if (candidate.exitStatus) return false;
@@ -31,6 +35,7 @@ export function findAgentTerminal(sessionId: string, tools: readonly string[], t
     if (env?.PROMPTSTER_TERMINAL_SESSION_ID) {
       return env.PROMPTSTER_TERMINAL_SESSION_ID === sessionId && env.PROMPTSTER_TERMINAL_TOOL === tool;
     }
+    if (!session.hosted) return false;
     return candidate.name === TOOL_NAMES[tool] || (candidate.name === AUTO_TERMINAL_NAME && tool === autoTool);
   });
 }
@@ -116,6 +121,15 @@ export class AssessmentView implements vscode.WebviewViewProvider {
   trackTool(sessionId: string, tool: 'claude' | 'codex', terminal: vscode.Terminal): void {
     this.terminals.set(`${sessionId}:${tool}`, terminal);
   }
+  /**
+   * A restore the extension is still waiting on. A click that lands first must
+   * wait for it, or it starts a second agent beside the one being restored.
+   */
+  awaitRestore(restore: Promise<unknown>): void {
+    const pending = restore.finally(() => { if (this.pendingRestore === pending) this.pendingRestore = undefined; });
+    this.pendingRestore = pending;
+  }
+  private pendingRestore?: Promise<unknown>;
   private async handle(request: { type?: unknown; action?: unknown; sessionId?: unknown; tool?: unknown }): Promise<void> {
     if (request.type === 'ready') { this.refresh(); return; }
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -137,7 +151,11 @@ export class AssessmentView implements vscode.WebviewViewProvider {
         const tool = request.tool;
         if ((tool !== 'claude' && tool !== 'codex') || !session.tools.includes(tool)) return;
         const key = `${session.sessionId}:${tool}`;
-        let terminal = this.terminals.get(key) ?? findAgentTerminal(session.sessionId, session.tools, tool);
+        let terminal = this.terminals.get(key) ?? findAgentTerminal(session, tool);
+        if (!terminal && this.pendingRestore) {
+          await this.pendingRestore;
+          terminal = this.terminals.get(key) ?? findAgentTerminal(session, tool);
+        }
         if (!terminal) {
           terminal = vscode.window.createTerminal({ name: TOOL_NAMES[tool], cwd: root, env: { PROMPTSTER_TERMINAL_SESSION_ID: session.sessionId, PROMPTSTER_TERMINAL_TOOL: tool } });
           this.terminals.set(key, terminal);

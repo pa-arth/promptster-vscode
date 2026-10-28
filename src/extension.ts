@@ -299,19 +299,25 @@ function revealAgentTerminal(session: PromptsterSession, tool: 'claude' | 'codex
     assessment.trackTool(session.sessionId, tool, terminal);
     terminal.show(false);
   };
-  const existing = findAgentTerminal(session.sessionId, session.tools, tool);
+  const existing = findAgentTerminal(session, tool);
   if (existing) {
     reveal(existing);
     return;
   }
-  const subscription = vscode.window.onDidOpenTerminal(() => {
-    const restored = findAgentTerminal(session.sessionId, session.tools, tool);
-    if (!restored) return;
-    clearTimeout(timer);
-    subscription.dispose();
-    reveal(restored);
-  });
-  const timer = setTimeout(() => subscription.dispose(), REVEAL_WAIT_MS);
+  assessment.awaitRestore(new Promise<void>(resolve => {
+    const subscription = vscode.window.onDidOpenTerminal(() => {
+      const restored = findAgentTerminal(session, tool);
+      if (!restored) return;
+      clearTimeout(timer);
+      subscription.dispose();
+      reveal(restored);
+      resolve();
+    });
+    const timer = setTimeout(() => {
+      subscription.dispose();
+      resolve();
+    }, REVEAL_WAIT_MS);
+  }));
 }
 
 async function stopCapture(): Promise<void> {
