@@ -11,9 +11,11 @@ live 1.13.1 box (session d35c34cc): two reopens left three *Promptster
 Assessment* terminals and four `session_start` events. Both latches are now
 claimed by exclusively creating `.promptster/editor-latches/<session>.<latch>`
 in the workspace, which every window shares and which is atomic across the
-separate extension host each window gets. A session already latched by an
-older build gets its marker on the next attach, and a failed browser-state
-write no longer cancels a won claim.
+separate extension host each window gets. A failed browser-state write no
+longer cancels a won claim. Sessions already running when this ships are only
+partly covered: an older build kept the latch in one browser, so the marker is
+written when that browser reattaches, and a different browser that attaches
+first can still launch once more.
 
 ## 0.3.14
 
