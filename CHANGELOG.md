@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.16
+
+### Reopening the box shows the running agent instead of starting another
+Verified live on 0.3.15: reopening a hosted box from another browser no longer
+launches a second agent, but the new window opened with the terminal panel
+closed, and "Open Claude Code" then started a second Claude beside the one
+already running. A terminal restored into a new window keeps its name but loses
+its creation env, which was the only thing the button matched on. The agent
+terminal is now also found by name (the view's per-tool name, or the
+auto-launch's *Promptster Assessment*, for the session's preferred tool) on
+hosted sessions, which hold one session per box; a local editor never matches by
+name. A window that loses the launch claim shows that terminal, waiting up to 15s
+for the restore, and a click on the button during that wait waits for it too.
+
 ## 0.3.15
 
 ### One agent terminal per session, whatever the browser
