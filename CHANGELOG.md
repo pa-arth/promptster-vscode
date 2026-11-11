@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.3.16
+
+### Reopening the box shows the running agent instead of starting another
+Verified live on 0.3.15: reopening a hosted box from another browser no longer
+launches a second agent, but the new window opened with the terminal panel
+closed, and "Open Claude Code" then started a second Claude beside the one
+already running. A terminal restored into a new window keeps its name but loses
+its creation env, which was the only thing the button matched on. The agent
+terminal is now also found by name (the view's per-tool name, or the
+auto-launch's *Promptster Assessment*, for the session's preferred tool) on
+hosted sessions, which hold one session per box; a local editor never matches by
+name. A window that loses the launch claim shows that terminal, waiting up to 15s
+for the restore, and a click on the button during that wait waits for it too.
+
+## 0.3.15
+
+### One agent terminal per session, whatever the browser
+Reopening a hosted box from another browser, an incognito window or after
+clearing site data launched another Claude Code terminal and re-sent
+`session_start`. The once-per-session latches lived only in `globalState`,
+which code-server keeps in the browser's IndexedDB, not on the box. Found on a
+live 1.13.1 box (session d35c34cc): two reopens left three *Promptster
+Assessment* terminals and four `session_start` events. Both latches are now
+claimed by exclusively creating `.promptster/editor-latches/<session>.<latch>`
+in the workspace, which every window shares and which is atomic across the
+separate extension host each window gets. A failed browser-state write no
+longer cancels a won claim. Sessions already running when this ships are only
+partly covered: an older build kept the latch in one browser, so the marker is
+written when that browser reattaches, and a different browser that attaches
+first can still launch once more.
+
+## 0.3.14
+
+### Check-ins switched on mid-session arrive
+While an assessment's check-ins are off, the view re-asks every 5 minutes instead of
+stopping for the session, so a recruiter who turns them on mid-session still reaches
+the candidate. A 401 still stops until the session changes.
+
+### Mid-session check-ins (openspec `mid-session-check-ins`, tasks 2.1–2.3)
+When the hiring team turns check-ins on, Jordan (engineering lead) appears first
+in the Teammates view, on every hosted session — ticket-flow or not (on a
+non-ticket-flow session Jordan is the only person). The view polls
+`GET /v1/sessions/:id/check-ins` every 30s and stops on `check_ins_off` or 401
+until the session changes. A new open question reveals the view without taking
+keyboard focus (`WebviewView.show(true)`, or `promptster.teammates.focus` with
+`{ preserveFocus: true }` when the view was never resolved), selects Jordan
+unless the candidate is already in the panel, puts an unread dot on Jordan, and
+shows a non-modal "Jordan checked in" notification with an Open action. Replies
+to Jordan post to `/check-ins/messages`.
+
 ## 0.3.13
 
 ### The Assessment view appears on hosted boxes
