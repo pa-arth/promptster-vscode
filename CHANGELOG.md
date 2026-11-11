@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.17
+
+### The Teammates chatbox stays in view
+With the Assessment and Teammates views both open and three teammates on the
+roster, the stacked teammate cards pushed the message box below the fold, and a
+candidate new to the assessment had no sign they could ask anything. Teammates
+are now a row of compact tabs, and the selected teammate's role sits in the
+thread header. The thread scrolls while the composer stays pinned at the bottom.
+Teammates starts at twice the Assessment view's height (`initialSize`), which
+applies only the first time the sidebar is laid out, so a size the candidate
+already dragged is kept. In a view too short for everything, the page scrolls
+instead of clipping Send.
+
+### A sent message shows at once
+Before, nothing appeared until the model answered, so both messages landed
+together several seconds later. Now the question appears as soon as it's sent,
+with typing dots under the teammate until the reply arrives. A thread reload
+mid-send doesn't draw the question twice, and a slow first read doesn't hide it.
+
 ## 0.3.16
 
 ### Reopening the box shows the running agent instead of starting another

@@ -549,11 +549,13 @@ describe('teammates page', () => {
     (doc.getElementById('send') as unknown as { click(): void }).click();
     expect(sent.at(-1)).toMatchObject({ type: 'send', text: 'Capped?' });
     expect([questions(), typing()]).toEqual([['Capped?'], 1]);
-    await post({ type: 'thread', id: 'priya', messages: [ask] }); // a refresh mid-send already holds the question
-    expect([questions(), typing()]).toEqual([['Capped?'], 1]);
+    await post({ type: 'thread', id: 'priya', messages: [{ ...ask, eventId: 'old', text: 'Earlier question' }] }); // a slow first read lands mid-send
+    expect([questions(), typing()]).toEqual([['Earlier question', 'Capped?'], 1]);
+    await post({ type: 'thread', id: 'priya', messages: [{ ...ask, eventId: 'old', text: 'Earlier question' }, ask] }); // a refresh mid-send already holds the question
+    expect([questions(), typing()]).toEqual([['Earlier question', 'Capped?'], 1]);
     await post({ type: 'append', id: 'priya', messages: [ask, reply] });
     await post({ type: 'busy', value: false });
-    expect([questions(), typing()]).toEqual([['Capped?'], 0]);
+    expect([questions(), typing()]).toEqual([['Earlier question', 'Capped?'], 0]);
     expect(doc.querySelector('.message:not(.mine) .text')?.textContent).toBe('Yes.');
     await window.happyDOM.close();
   });
