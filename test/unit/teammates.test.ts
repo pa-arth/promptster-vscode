@@ -233,6 +233,7 @@ describe('webview reload mid-send', () => {
     const source = readFileSync(resolve('src/ui/teammates.ts'), 'utf8');
     expect(source).toContain('data.messages.filter(m=>!seen.has(m.eventId))');
   });
+
 });
 
 describe('mid-session check-ins', () => {
@@ -521,5 +522,39 @@ describe('mid-session check-ins', () => {
     expect(roster.personas.map((p: any) => p.id)).toEqual(['checkin', 'priya']);
     expect(roster.personas[0].unread).toBe(false);
     view.dispose();
+  });
+});
+
+describe('teammates page', () => {
+  it('shows a sent question with typing dots, once, until the reply lands', async () => {
+    const { Window } = await import('happy-dom');
+    let page = '';
+    new TeammatesView({ subscriptions: [] } as never).resolveWebviewView({ webview: {
+      cspSource: 'x', options: {}, set html(v: string) { page = v; }, get html() { return page; },
+      onDidReceiveMessage: () => ({ dispose() {} }), postMessage: () => Promise.resolve(true),
+    } } as never);
+    const window = new Window({ settings: { enableJavaScriptEvaluation: true, suppressInsecureJavaScriptEnvironmentWarning: true } as never });
+    const sent: Array<{ type: string }> = [];
+    Object.assign(window, { acquireVsCodeApi: () => ({ postMessage: (m: { type: string }) => sent.push(m) }) });
+    window.document.write(page);
+    const doc = window.document;
+    const post = async (data: object) => { window.dispatchEvent(new window.MessageEvent('message', { data: { sessionId: 's', ...data } })); };
+    const questions = () => [...doc.querySelectorAll('.mine .text')].map(n => n.textContent);
+    const typing = () => doc.querySelectorAll('.typing').length;
+    const ask = { eventId: 'q', at: new Date().toISOString(), direction: 'to_persona', kind: 'message', text: 'Capped?' };
+    const reply = { ...ask, eventId: 'r', direction: 'from_persona', text: 'Yes.' };
+    await post({ type: 'personas', personas: [{ id: 'priya', name: 'Priya Raman', role: 'Architect', owns: 'Prior art', avatarUrl: null }], selected: 'priya' });
+    await post({ type: 'thread', id: 'priya', messages: [] });
+    (doc.getElementById('draft') as unknown as { value: string }).value = 'Capped?';
+    (doc.getElementById('send') as unknown as { click(): void }).click();
+    expect(sent.at(-1)).toMatchObject({ type: 'send', text: 'Capped?' });
+    expect([questions(), typing()]).toEqual([['Capped?'], 1]);
+    await post({ type: 'thread', id: 'priya', messages: [ask] }); // a refresh mid-send already holds the question
+    expect([questions(), typing()]).toEqual([['Capped?'], 1]);
+    await post({ type: 'append', id: 'priya', messages: [ask, reply] });
+    await post({ type: 'busy', value: false });
+    expect([questions(), typing()]).toEqual([['Capped?'], 0]);
+    expect(doc.querySelector('.message:not(.mine) .text')?.textContent).toBe('Yes.');
+    await window.happyDOM.close();
   });
 });

@@ -1,7 +1,7 @@
 {
   "name": "promptster",
   "displayName": "Promptster Assessment",
-  "description": "Editor telemetry for Promptster hiring assessments \u2014 captures development process signals for evaluation.",
+  "description": "Editor telemetry for Promptster hiring assessments — captures development process signals for evaluation.",
   "version": "0.3.16",
   "publisher": "Promptster",
   "icon": "assets/icon.png",
@@ -69,13 +69,15 @@
           "id": "promptster.assessment",
           "type": "webview",
           "name": "Assessment",
-          "when": "promptster.assessmentWorkspace"
+          "when": "promptster.assessmentWorkspace",
+          "initialSize": 1
         },
         {
           "id": "promptster.teammates",
           "type": "webview",
           "name": "Teammates",
-          "when": "promptster.ticketFlow"
+          "when": "promptster.ticketFlow",
+          "initialSize": 2
         }
       ]
     },
@@ -107,6 +109,7 @@
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.0.0",
+    "happy-dom": "^21.0.4",
     "ovsx": "^0.10.9",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"

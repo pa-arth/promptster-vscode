@@ -52,7 +52,8 @@ const EDITORS = {
     name: "VS Code",
     command: "code",
     bundle: "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
-    electron: "/Applications/Visual Studio Code.app/Contents/MacOS/Electron",
+    // Linux/WSL: point this at an unpacked VS Code tarball's `code` binary.
+    electron: process.env.PROMPTSTER_VERIFY_VSCODE_ELECTRON || "/Applications/Visual Studio Code.app/Contents/MacOS/Electron",
   },
   cursor: {
     name: "Cursor",
