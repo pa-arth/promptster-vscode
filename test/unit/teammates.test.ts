@@ -222,4 +222,11 @@ describe('webview reload mid-send', () => {
     const source = readFileSync(resolve('src/ui/teammates.ts'), 'utf8');
     expect(source).toContain('data.messages.filter(m=>!seen.has(m.eventId))');
   });
+
+  it('shows a sent message at once and drops it when the reply or a failure lands', () => {
+    const source = readFileSync(resolve('src/ui/teammates.ts'), 'utf8');
+    expect(source).toContain("pending={id:selected,text:value}");
+    expect(source).toContain('if(pending?.id===data.id)pending=null;');
+    expect(source).toContain('if(!busy&&pending){pending=null;');
+  });
 });

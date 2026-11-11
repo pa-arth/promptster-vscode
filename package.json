@@ -69,13 +69,15 @@
           "id": "promptster.assessment",
           "type": "webview",
           "name": "Assessment",
-          "when": "promptster.assessmentWorkspace"
+          "when": "promptster.assessmentWorkspace",
+          "initialSize": 1
         },
         {
           "id": "promptster.teammates",
           "type": "webview",
           "name": "Teammates",
-          "when": "promptster.ticketFlow"
+          "when": "promptster.ticketFlow",
+          "initialSize": 2
         }
       ]
     },
